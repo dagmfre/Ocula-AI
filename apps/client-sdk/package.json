@@ -1,0 +1,21 @@
+{
+  "name": "@ocula/client-sdk",
+  "version": "0.1.0",
+  "description": "Ocula AI Client SDK - Screen capture, audio, and overlay engine",
+  "type": "module",
+  "main": "dist/ocula.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "dev": "esbuild src/index.ts --bundle --outfile=dist/ocula.js --format=iife --global-name=OculaSDK --sourcemap --watch",
+    "build": "esbuild src/index.ts --bundle --outfile=dist/ocula.js --format=iife --global-name=OculaSDK --minify && tsc --emitDeclarationOnly",
+    "clean": "rimraf dist"
+  },
+  "devDependencies": {
+    "esbuild": "^0.20.0",
+    "typescript": "^5.3.0",
+    "rimraf": "^5.0.0"
+  }
+}

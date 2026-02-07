@@ -1,0 +1,29 @@
+{
+  "name": "ocula-ai",
+  "version": "0.1.0",
+  "description": "AI that sees, understands, and guides in real-time",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "pnpm --parallel run dev",
+    "dev:server": "pnpm --filter @ocula/server dev",
+    "dev:client": "pnpm --filter @ocula/client-sdk dev",
+    "build": "pnpm --parallel run build",
+    "build:server": "pnpm --filter @ocula/server build",
+    "build:client": "pnpm --filter @ocula/client-sdk build",
+    "clean": "pnpm --parallel run clean"
+  },
+  "keywords": [
+    "ai",
+    "visual-support",
+    "gemini",
+    "langchain",
+    "screen-capture"
+  ],
+  "author": "Ocula AI Team",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0",
+    "pnpm": ">=8.0.0"
+  }
+}
