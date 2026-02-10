@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Deals — Acme CRM</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="app-shell">
+    <div id="sidebar-root"></div>
+
+    <div class="main-content">
+      <header class="top-header">
+        <h1>Deals Pipeline</h1>
+        <div class="header-actions">
+          <div class="search-bar">
+            <span>🔍</span>
+            <input type="text" placeholder="Search deals…">
+          </div>
+          <button class="btn btn-primary btn-sm" id="new-deal-btn">+ New Deal</button>
+        </div>
+      </header>
+
+      <div class="page-content">
+        <!-- Pipeline Stats -->
+        <div class="stats-grid" style="grid-template-columns: repeat(4, 1fr);">
+          <div class="stat-card">
+            <div class="stat-value" id="total-pipeline">$0</div>
+            <div class="stat-label">Total Pipeline Value</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value" id="weighted-pipeline">$0</div>
+            <div class="stat-label">Weighted Value</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value" id="win-rate">0%</div>
+            <div class="stat-label">Win Rate</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value" id="avg-deal">$0</div>
+            <div class="stat-label">Avg Deal Size</div>
+          </div>
+        </div>
+
+        <!-- Kanban Board -->
+        <div class="pipeline-board" id="pipeline-board"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Ocula AI Widget -->
+  <script src="http://localhost:3001/widget.js"
+    data-platform-id="mock-crm-demo"
+    data-server="ws://localhost:3001/ws">
+  </script>
+
+  <script src="mock-data.js"></script>
+  <script src="components.js"></script>
+  <script>
+    initPage('deals', 'Deals');
+
+    // Calculate stats
+    const activeDeals = DEALS.filter(d => !d.stage.startsWith('closed'));
+    const totalPipeline = activeDeals.reduce((s, d) => s + d.value, 0);
+    const weightedPipeline = activeDeals.reduce((s, d) => s + d.value * d.probability / 100, 0);
+    const wonDeals = DEALS.filter(d => d.stage === 'closed-won');
+    const closedDeals = DEALS.filter(d => d.stage.startsWith('closed'));
+    const winRate = closedDeals.length ? Math.round(wonDeals.length / closedDeals.length * 100) : 0;
+    const avgDeal = activeDeals.length ? Math.round(totalPipeline / activeDeals.length) : 0;
+
+    document.getElementById('total-pipeline').textContent = `$${(totalPipeline / 1000).toFixed(0)}K`;
+    document.getElementById('weighted-pipeline').textContent = `$${(weightedPipeline / 1000).toFixed(0)}K`;
+    document.getElementById('win-rate').textContent = `${winRate}%`;
+    document.getElementById('avg-deal').textContent = `$${(avgDeal / 1000).toFixed(1)}K`;
+
+    // Render Kanban
+    const board = document.getElementById('pipeline-board');
+    const visibleStages = ["lead", "qualified", "proposal", "negotiation", "closed-won", "closed-lost"];
+
+    visibleStages.forEach(stage => {
+      const stageDeals = DEALS.filter(d => d.stage === stage);
+      const stageValue = stageDeals.reduce((s, d) => s + d.value, 0);
+
+      const col = document.createElement('div');
+      col.className = 'pipeline-column';
+      col.innerHTML = `
+        <div class="pipeline-column-header">
+          <span>${STAGE_LABELS[stage]}</span>
+          <span class="count">${stageDeals.length} · $${(stageValue / 1000).toFixed(0)}K</span>
+        </div>
+        <div class="pipeline-cards">
+          ${stageDeals.map(d => `
+            <div class="deal-card" draggable="true">
+              <div class="deal-name">${d.name}</div>
+              <div class="deal-value">$${d.value.toLocaleString()}</div>
+              <div class="deal-contact">
+                <div class="avatar avatar-sm" style="width:20px;height:20px;font-size:9px;">${d.contact.split(' ').map(n => n[0]).join('')}</div>
+                ${d.contact}
+              </div>
+            </div>
+          `).join('')}
+          ${stageDeals.length === 0 ? '<div class="empty-state" style="padding:24px"><div style="font-size:13px">No deals</div></div>' : ''}
+        </div>
+      `;
+      board.appendChild(col);
+    });
+  </script>
+</body>
+</html>

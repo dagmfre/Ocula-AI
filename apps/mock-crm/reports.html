@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Reports — Acme CRM</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="app-shell">
+    <div id="sidebar-root"></div>
+
+    <div class="main-content">
+      <header class="top-header">
+        <h1>Reports & Analytics</h1>
+        <div class="header-actions">
+          <select style="background:var(--bg-card);border:1px solid var(--border);border-radius:8px;padding:6px 12px;color:var(--text-primary);font-size:13px;font-family:inherit;">
+            <option>Last 30 Days</option>
+            <option>Last 90 Days</option>
+            <option>This Year</option>
+            <option>All Time</option>
+          </select>
+          <button class="btn btn-secondary btn-sm" id="export-btn">📥 Export PDF</button>
+          <button class="btn btn-primary btn-sm">Generate Report</button>
+        </div>
+      </header>
+
+      <div class="page-content">
+        <!-- KPI Row -->
+        <div class="stats-grid">
+          <div class="stat-card">
+            <div class="stat-value">$348K</div>
+            <div class="stat-label">Total Revenue (YTD)</div>
+            <div class="stat-change up">↑ 24% vs last year</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value">67%</div>
+            <div class="stat-label">Win Rate</div>
+            <div class="stat-change up">↑ 5% improvement</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value">18 days</div>
+            <div class="stat-label">Avg Sales Cycle</div>
+            <div class="stat-change up">↑ 3 days faster</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value">$28.5K</div>
+            <div class="stat-label">Avg Deal Size</div>
+            <div class="stat-change up">↑ 12% increase</div>
+          </div>
+        </div>
+
+        <div class="grid-2">
+          <!-- Revenue Chart -->
+          <div class="card">
+            <div class="card-header">
+              <h2>Revenue Trend</h2>
+              <div style="display:flex;gap:12px;font-size:12px;color:var(--text-muted);">
+                <span>● Revenue</span>
+              </div>
+            </div>
+            <div class="chart-bars" id="revenue-trend" style="height:200px"></div>
+          </div>
+
+          <!-- Pipeline Breakdown -->
+          <div class="card">
+            <div class="card-header">
+              <h2>Pipeline Breakdown</h2>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:16px;margin-top:8px;">
+              <div>
+                <div class="flex-between mb-16" style="margin-bottom:6px">
+                  <span style="font-size:13px">Lead</span>
+                  <span style="font-size:13px;color:var(--text-muted)">$14.5K · 2 deals</span>
+                </div>
+                <div class="progress-bar"><div class="fill" style="width:12%"></div></div>
+              </div>
+              <div>
+                <div class="flex-between" style="margin-bottom:6px">
+                  <span style="font-size:13px">Qualified</span>
+                  <span style="font-size:13px;color:var(--text-muted)">$30K · 2 deals</span>
+                </div>
+                <div class="progress-bar"><div class="fill" style="width:25%"></div></div>
+              </div>
+              <div>
+                <div class="flex-between" style="margin-bottom:6px">
+                  <span style="font-size:13px">Proposal</span>
+                  <span style="font-size:13px;color:var(--text-muted)">$84K · 2 deals</span>
+                </div>
+                <div class="progress-bar"><div class="fill" style="width:55%"></div></div>
+              </div>
+              <div>
+                <div class="flex-between" style="margin-bottom:6px">
+                  <span style="font-size:13px">Negotiation</span>
+                  <span style="font-size:13px;color:var(--text-muted)">$120K · 2 deals</span>
+                </div>
+                <div class="progress-bar"><div class="fill" style="width:80%"></div></div>
+              </div>
+              <div>
+                <div class="flex-between" style="margin-bottom:6px">
+                  <span style="font-size:13px;color:var(--success)">Closed Won</span>
+                  <span style="font-size:13px;color:var(--text-muted)">$15K · 1 deal</span>
+                </div>
+                <div class="progress-bar"><div class="fill" style="width:100%;background:var(--success)"></div></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Activity Report -->
+        <div class="card mt-24">
+          <div class="card-header">
+            <h2>Team Activity (Last 30 Days)</h2>
+          </div>
+          <div class="table-container">
+            <table>
+              <thead>
+                <tr>
+                  <th>Metric</th>
+                  <th>This Month</th>
+                  <th>Last Month</th>
+                  <th>Change</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td style="font-weight:600">Emails Sent</td>
+                  <td>342</td>
+                  <td>298</td>
+                  <td><span class="badge badge-success">+14.8%</span></td>
+                </tr>
+                <tr>
+                  <td style="font-weight:600">Calls Made</td>
+                  <td>89</td>
+                  <td>104</td>
+                  <td><span class="badge badge-danger">-14.4%</span></td>
+                </tr>
+                <tr>
+                  <td style="font-weight:600">Meetings Held</td>
+                  <td>47</td>
+                  <td>38</td>
+                  <td><span class="badge badge-success">+23.7%</span></td>
+                </tr>
+                <tr>
+                  <td style="font-weight:600">Deals Created</td>
+                  <td>12</td>
+                  <td>9</td>
+                  <td><span class="badge badge-success">+33.3%</span></td>
+                </tr>
+                <tr>
+                  <td style="font-weight:600">Deals Closed</td>
+                  <td>7</td>
+                  <td>6</td>
+                  <td><span class="badge badge-success">+16.7%</span></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Ocula AI Widget -->
+  <script src="http://localhost:3001/widget.js"
+    data-platform-id="mock-crm-demo"
+    data-server="ws://localhost:3001/ws">
+  </script>
+
+  <script src="mock-data.js"></script>
+  <script src="components.js"></script>
+  <script>
+    initPage('reports', 'Reports');
+
+    // Revenue trend chart
+    const chartEl = document.getElementById('revenue-trend');
+    const maxVal = Math.max(...MONTHLY_REVENUE.map(m => m.value));
+    MONTHLY_REVENUE.forEach(m => {
+      const bar = document.createElement('div');
+      bar.className = 'chart-bar';
+      bar.style.height = `${(m.value / maxVal) * 100}%`;
+      bar.setAttribute('data-label', m.month);
+      bar.title = `$${(m.value / 1000).toFixed(0)}K`;
+      chartEl.appendChild(bar);
+    });
+  </script>
+</body>
+</html>

@@ -7,28 +7,29 @@
 
 /** Message types sent to server */
 export interface ClientMessage {
-  type: 'frame' | 'audio' | 'text' | 'user_query' | 'ping';
+  type: 'frame' | 'audio' | 'text' | 'user_query' | 'ping' | 'selector_map';
   data?: string;      // Base64 data for frame/audio
   text?: string;      // Text content for text/user_query
   frame?: string;     // Screen frame for user_query
   sessionId?: string; // Session identifier
   scrollX?: number;   // Scroll offset X at capture time
   scrollY?: number;   // Scroll offset Y at capture time
+  selectors?: Array<{ selector: string; label: string; category: string }>; // DOM selector map
 }
 
 /** Message types received from server */
 export interface ServerMessage {
-  type: 'assistant_response' | 'audio' | 'draw' | 'clear' | 'error' | 'connected' | 'pong';
+  type: 'assistant_response' | 'audio' | 'draw' | 'clear' | 'highlight_sequence' | 'error' | 'connected' | 'pong';
   text?: string;
   data?: string;            // Base64 audio data
   visualCommands?: VisualCommand[];
   action?: string;          // For draw commands
-  point?: [number, number]; // Normalized coordinates [y, x]
+  selector?: string;        // For highlight commands
   label?: string;
-  width?: number;           // For highlight commands
-  height?: number;          // For highlight commands
   error?: string;
   sessionId?: string;
+  /** Highlight sequence steps for multi-element walkthroughs */
+  steps?: Array<{ selector: string; label: string; delay_ms?: number }>;
   /** Scroll context at the time the frame was captured */
   scrollX?: number;
   scrollY?: number;
@@ -36,11 +37,12 @@ export interface ServerMessage {
 
 /** Visual command structure */
 export interface VisualCommand {
-  type: 'arrow' | 'highlight' | 'circle' | 'clear';
-  point?: [number, number];
+  type: 'highlight_element' | 'highlight_sequence' | 'clear';
+  selector?: string;
   label?: string;
-  width?: number;
-  height?: number;
+  action?: 'apply' | 'clear';
+  /** Steps for highlight_sequence commands */
+  steps?: Array<{ selector: string; label: string; delay_ms?: number }>;
 }
 
 /** Connection event handlers */
@@ -168,19 +170,27 @@ export class OculaConnection {
           break;
 
         case 'draw':
-          if (message.action && message.point) {
+          if (message.action && message.selector) {
             this.handlers.onDraw?.({
-              type: message.action as VisualCommand['type'],
-              point: message.point,
+              type: 'highlight_element',
+              selector: message.selector,
               label: message.label,
-              width: message.width,
-              height: message.height,
+              action: message.action as VisualCommand['action'],
             }, message.scrollX, message.scrollY);
           }
           break;
 
         case 'clear':
           this.handlers.onDraw?.({ type: 'clear' });
+          break;
+
+        case 'highlight_sequence':
+          if (message.steps && message.steps.length > 0) {
+            this.handlers.onDraw?.({
+              type: 'highlight_sequence',
+              steps: message.steps,
+            }, message.scrollX, message.scrollY);
+          }
           break;
 
         case 'assistant_response':
@@ -266,6 +276,13 @@ export class OculaConnection {
    */
   sendQuery(text: string, frame?: string): void {
     this.send({ type: 'user_query', text, frame });
+  }
+
+  /**
+   * Send the current page's selector map to the server
+   */
+  sendSelectorMap(selectors: Array<{ selector: string; label: string; category: string }>): void {
+    this.send({ type: 'selector_map', selectors });
   }
 
   /**

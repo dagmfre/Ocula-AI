@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Contacts — Acme CRM</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="app-shell">
+    <div id="sidebar-root"></div>
+
+    <div class="main-content">
+      <header class="top-header">
+        <h1>Contacts</h1>
+        <div class="header-actions">
+          <div class="search-bar">
+            <span>🔍</span>
+            <input type="text" placeholder="Search contacts…" id="contact-search">
+          </div>
+          <button class="btn btn-secondary btn-sm">Import</button>
+          <button class="btn btn-primary btn-sm" id="add-contact-btn">+ Add Contact</button>
+        </div>
+      </header>
+
+      <div class="page-content">
+        <!-- Contact Stats -->
+        <div class="stats-grid" style="grid-template-columns: repeat(3, 1fr);">
+          <div class="stat-card">
+            <div class="stat-value">847</div>
+            <div class="stat-label">Total Contacts</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value">692</div>
+            <div class="stat-label">Active</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value">155</div>
+            <div class="stat-label">Inactive</div>
+          </div>
+        </div>
+
+        <!-- Contacts Table -->
+        <div class="card">
+          <div class="card-header">
+            <h2>All Contacts</h2>
+            <div style="display:flex;gap:8px;">
+              <button class="btn btn-secondary btn-sm">Filter</button>
+              <button class="btn btn-secondary btn-sm" id="export-btn">Export CSV</button>
+            </div>
+          </div>
+          <div class="table-container">
+            <table>
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Email</th>
+                  <th>Phone</th>
+                  <th>Company</th>
+                  <th>Role</th>
+                  <th>Status</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="contacts-table"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Ocula AI Widget -->
+  <script src="http://localhost:3001/widget.js"
+    data-platform-id="mock-crm-demo"
+    data-server="ws://localhost:3001/ws">
+  </script>
+
+  <script src="mock-data.js"></script>
+  <script src="components.js"></script>
+  <script>
+    initPage('contacts', 'Contacts');
+
+    function renderContacts(filter = '') {
+      const tbody = document.getElementById('contacts-table');
+      const filtered = CONTACTS.filter(c =>
+        !filter || c.name.toLowerCase().includes(filter) ||
+        c.email.toLowerCase().includes(filter) ||
+        c.company.toLowerCase().includes(filter)
+      );
+      tbody.innerHTML = filtered.map(c => `
+        <tr>
+          <td>
+            <div style="display:flex;align-items:center;gap:10px;">
+              <div class="avatar avatar-sm">${c.avatar}</div>
+              <span style="font-weight:600">${c.name}</span>
+            </div>
+          </td>
+          <td>${c.email}</td>
+          <td>${c.phone}</td>
+          <td>${c.company}</td>
+          <td style="color:var(--text-secondary)">${c.role}</td>
+          <td><span class="badge ${c.status === 'active' ? 'badge-success' : 'badge-muted'}">${c.status}</span></td>
+          <td>
+            <button class="btn btn-secondary btn-sm">Edit</button>
+          </td>
+        </tr>
+      `).join('');
+    }
+
+    renderContacts();
+
+    document.getElementById('contact-search').addEventListener('input', (e) => {
+      renderContacts(e.target.value.toLowerCase());
+    });
+  </script>
+</body>
+</html>

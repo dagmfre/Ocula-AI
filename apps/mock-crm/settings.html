@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Settings — Acme CRM</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="app-shell">
+    <div id="sidebar-root"></div>
+
+    <div class="main-content">
+      <header class="top-header">
+        <h1>Settings</h1>
+        <div class="header-actions">
+          <button class="btn btn-primary btn-sm">Save Changes</button>
+        </div>
+      </header>
+
+      <div class="page-content">
+        <div class="grid-2">
+          <!-- Account Settings -->
+          <div class="card">
+            <div class="card-header">
+              <h2>Account Settings</h2>
+            </div>
+            <div class="form-group">
+              <label>Full Name</label>
+              <input type="text" value="Jane Doe">
+            </div>
+            <div class="form-group">
+              <label>Email Address</label>
+              <input type="email" value="jane.doe@acmecrm.com">
+            </div>
+            <div class="form-group">
+              <label>Role</label>
+              <select>
+                <option selected>Admin</option>
+                <option>Manager</option>
+                <option>Member</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Timezone</label>
+              <select>
+                <option>(UTC-08:00) Pacific Time</option>
+                <option selected>(UTC-05:00) Eastern Time</option>
+                <option>(UTC+00:00) UTC</option>
+                <option>(UTC+01:00) Central European</option>
+                <option>(UTC+05:30) India Standard</option>
+                <option>(UTC+09:00) Japan Standard</option>
+              </select>
+            </div>
+            <button class="btn btn-secondary mt-8">Change Password</button>
+          </div>
+
+          <!-- Notifications -->
+          <div class="card">
+            <div class="card-header">
+              <h2>Notifications</h2>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:16px;">
+              <label style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;">
+                <div>
+                  <div style="font-size:14px;font-weight:600;">Email Notifications</div>
+                  <div style="font-size:12px;color:var(--text-muted);">Receive email updates about deals and contacts</div>
+                </div>
+                <input type="checkbox" checked style="width:18px;height:18px;accent-color:var(--accent);">
+              </label>
+              <label style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;">
+                <div>
+                  <div style="font-size:14px;font-weight:600;">Deal Alerts</div>
+                  <div style="font-size:12px;color:var(--text-muted);">Get notified when deal stages change</div>
+                </div>
+                <input type="checkbox" checked style="width:18px;height:18px;accent-color:var(--accent);">
+              </label>
+              <label style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;">
+                <div>
+                  <div style="font-size:14px;font-weight:600;">Weekly Digest</div>
+                  <div style="font-size:12px;color:var(--text-muted);">Summary of weekly activity and metrics</div>
+                </div>
+                <input type="checkbox" style="width:18px;height:18px;accent-color:var(--accent);">
+              </label>
+              <label style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;">
+                <div>
+                  <div style="font-size:14px;font-weight:600;">Slack Notifications</div>
+                  <div style="font-size:12px;color:var(--text-muted);">Push updates to your Slack workspace</div>
+                </div>
+                <input type="checkbox" style="width:18px;height:18px;accent-color:var(--accent);">
+              </label>
+            </div>
+          </div>
+        </div>
+
+        <!-- Team Members -->
+        <div class="card mt-24">
+          <div class="card-header">
+            <h2>Team Members</h2>
+            <button class="btn btn-primary btn-sm">+ Invite Member</button>
+          </div>
+          <div class="table-container">
+            <table>
+              <thead>
+                <tr>
+                  <th>Member</th>
+                  <th>Email</th>
+                  <th>Role</th>
+                  <th>Status</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>
+                    <div style="display:flex;align-items:center;gap:10px;">
+                      <div class="avatar avatar-sm">JD</div>
+                      <span style="font-weight:600">Jane Doe</span>
+                    </div>
+                  </td>
+                  <td>jane.doe@acmecrm.com</td>
+                  <td><span class="badge badge-info">Admin</span></td>
+                  <td><span class="badge badge-success">Active</span></td>
+                  <td>—</td>
+                </tr>
+                <tr>
+                  <td>
+                    <div style="display:flex;align-items:center;gap:10px;">
+                      <div class="avatar avatar-sm">MS</div>
+                      <span style="font-weight:600">Mike Smith</span>
+                    </div>
+                  </td>
+                  <td>mike.s@acmecrm.com</td>
+                  <td><span class="badge badge-warning">Manager</span></td>
+                  <td><span class="badge badge-success">Active</span></td>
+                  <td><button class="btn btn-secondary btn-sm">Edit</button></td>
+                </tr>
+                <tr>
+                  <td>
+                    <div style="display:flex;align-items:center;gap:10px;">
+                      <div class="avatar avatar-sm">AL</div>
+                      <span style="font-weight:600">Anna Lee</span>
+                    </div>
+                  </td>
+                  <td>anna.l@acmecrm.com</td>
+                  <td><span class="badge badge-muted">Member</span></td>
+                  <td><span class="badge badge-success">Active</span></td>
+                  <td><button class="btn btn-secondary btn-sm">Edit</button></td>
+                </tr>
+                <tr>
+                  <td>
+                    <div style="display:flex;align-items:center;gap:10px;">
+                      <div class="avatar avatar-sm">BT</div>
+                      <span style="font-weight:600">Ben Torres</span>
+                    </div>
+                  </td>
+                  <td>ben.t@acmecrm.com</td>
+                  <td><span class="badge badge-muted">Member</span></td>
+                  <td><span class="badge badge-muted">Invited</span></td>
+                  <td><button class="btn btn-secondary btn-sm">Resend</button></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Integrations -->
+        <div class="card mt-24">
+          <div class="card-header">
+            <h2>Integrations</h2>
+          </div>
+          <div class="grid-2" style="gap:12px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:16px;background:var(--bg-primary);border:1px solid var(--border);border-radius:8px;">
+              <div style="display:flex;align-items:center;gap:12px;">
+                <span style="font-size:24px">📧</span>
+                <div>
+                  <div style="font-size:14px;font-weight:600;">Gmail</div>
+                  <div style="font-size:12px;color:var(--text-muted)">Sync emails and contacts</div>
+                </div>
+              </div>
+              <span class="badge badge-success">Connected</span>
+            </div>
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:16px;background:var(--bg-primary);border:1px solid var(--border);border-radius:8px;">
+              <div style="display:flex;align-items:center;gap:12px;">
+                <span style="font-size:24px">📅</span>
+                <div>
+                  <div style="font-size:14px;font-weight:600;">Google Calendar</div>
+                  <div style="font-size:12px;color:var(--text-muted)">Sync meetings and events</div>
+                </div>
+              </div>
+              <span class="badge badge-success">Connected</span>
+            </div>
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:16px;background:var(--bg-primary);border:1px solid var(--border);border-radius:8px;">
+              <div style="display:flex;align-items:center;gap:12px;">
+                <span style="font-size:24px">💬</span>
+                <div>
+                  <div style="font-size:14px;font-weight:600;">Slack</div>
+                  <div style="font-size:12px;color:var(--text-muted)">Push notifications</div>
+                </div>
+              </div>
+              <button class="btn btn-secondary btn-sm">Connect</button>
+            </div>
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:16px;background:var(--bg-primary);border:1px solid var(--border);border-radius:8px;">
+              <div style="display:flex;align-items:center;gap:12px;">
+                <span style="font-size:24px">⚡</span>
+                <div>
+                  <div style="font-size:14px;font-weight:600;">Zapier</div>
+                  <div style="font-size:12px;color:var(--text-muted)">Automate workflows</div>
+                </div>
+              </div>
+              <button class="btn btn-secondary btn-sm">Connect</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Danger Zone -->
+        <div class="card mt-24" style="border-color:rgba(239,68,68,0.2);">
+          <div class="card-header">
+            <h2 style="color:var(--danger)">Danger Zone</h2>
+          </div>
+          <div style="display:flex;align-items:center;justify-content:space-between;">
+            <div>
+              <div style="font-size:14px;font-weight:600;">Delete Account</div>
+              <div style="font-size:13px;color:var(--text-muted)">Permanently delete your account and all data. This action cannot be undone.</div>
+            </div>
+            <button class="btn btn-danger btn-sm">Delete Account</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Ocula AI Widget -->
+  <script src="http://localhost:3001/widget.js"
+    data-platform-id="mock-crm-demo"
+    data-server="ws://localhost:3001/ws">
+  </script>
+
+  <script src="mock-data.js"></script>
+  <script src="components.js"></script>
+  <script>
+    initPage('settings', 'Settings');
+  </script>
+</body>
+</html>

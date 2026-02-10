@@ -1,7 +1,7 @@
 # Ocula AI - Copilot Instructions
 
 ## Project Overview
-Ocula AI is a B2B embeddable widget providing real-time visual AI support. It uses **Gemini 3** to see user screens, speak guidance via voice, and draw SVG overlays pointing to UI elements.
+Ocula AI is a B2B embeddable widget providing real-time visual AI support. It uses **Gemini 3** to see user screens, speak guidance via voice, and highlight UI elements with **CSS class-based highlights** (pulsing glow, glassmorphism labels). Old SVG-based drawing tools (`draw_arrow`, `draw_highlight`, `draw_circle`) have been fully removed.
 
 **Architecture**: Script-injected widget → WebSocket → Node.js/Fastify server → LangGraph Agent → Gemini 3 APIs
 
@@ -85,7 +85,7 @@ import { ChatGoogleGenerativeAI } from '@langchain/google-genai';
 
 const agent = createAgent({
   model: new ChatGoogleGenerativeAI({ model: 'gemini-2.0-flash' }),
-  tools: [inspectScreen, drawVisualGuide, searchKnowledge, clearOverlays],
+  tools: [inspectScreen, highlightElement, searchKnowledge, clearOverlays],
   systemPrompt: 'You are Ocula AI, a visual support assistant...',
   middleware: [toolErrorHandler, screenContextMiddleware],
   checkpointer: new MemorySaver(),
@@ -152,26 +152,75 @@ const pixelY = (normalizedY / 1000) * window.innerHeight;
 ## Project Structure
 ```
 /apps
-  /client-sdk        # Vanilla TS → single JS bundle (widget.js)
-    capture.ts       # getDisplayMedia screen capture
-    overlay.ts       # SVG arrows/highlights
-    audio.ts         # PCM capture/playback
-    connection.ts    # WebSocket to server
-  /server            # Node.js + Fastify
-    /agents          # ⭐ LangChain Agent System
-      agent.ts       # createAgent() setup with middleware
-      tools.ts       # Tool definitions (Zod schemas)
-      state.ts       # Extended state schema (optional)
-      stream.ts      # Streaming responses
-      index.ts       # runOculaAgent() entry point
-    /gemini          # Gemini API wrappers
-      client.ts      # GoogleGenAI SDK wrapper
-      live.ts        # Live API WebSocket proxy
-      vision.ts      # Agentic Vision calls
-    /knowledge       # Demo knowledge base
-      demo.md        # Hardcoded KB for MVP
+  /client-sdk          # Vanilla TS → single JS bundle (widget.js)
+    capture.ts         # getDisplayMedia screen capture
+    overlay.ts         # CSS class highlights + floating labels (no more SVG drawing)
+    audio.ts           # PCM capture/playback
+    connection.ts      # WebSocket to server
+  /server              # Node.js + Fastify (port 3001)
+    /agents            # ⭐ LangChain Agent System
+      agent.ts         # createAgent() setup with middleware
+      tools.ts         # Tool definitions: inspectScreen, highlightElement, searchKnowledge, clearOverlays
+      state.ts         # Extended state schema (optional)
+      stream.ts        # Streaming responses
+      index.ts         # runOculaAgent() entry point
+    /gemini            # Gemini API wrappers
+      client.ts        # GoogleGenAI SDK wrapper
+      live.ts          # Live API WebSocket proxy + function calling + UI_SELECTORS map + formatSelectorMap()
+      vision.ts        # Agentic Vision calls
+    /knowledge         # Demo knowledge base
+      demo.md          # Hardcoded KB for MVP
     /config
-      env.ts         # Zod-validated env (incl. LangSmith)
+      env.ts           # Zod-validated env (incl. LangSmith)
+  /web                 # Next.js 15 App Router (port 3000)
+    /src/app
+      page.tsx         # Landing page (hero, features, how-it-works, tech-stack, CTA, footer)
+      layout.tsx       # Root layout (Inter font, dark theme, globals.css)
+      globals.css      # Tailwind v4 theme, CSS vars, glassmorphism, animations
+      (auth)/
+        layout.tsx     # Auth layout with gradient mesh background
+        sign-in/       # Email + Google OAuth sign-in
+        sign-up/       # Email + Google OAuth sign-up → redirect to /onboarding
+      (dashboard)/
+        layout.tsx     # Protected layout, platform check, dashboard navbar
+        onboarding/    # 2-step KYC form (platform info → contact info)
+        dashboard/     # Platform overview, embed script, knowledge base upload
+      api/
+        auth/[...all]/ # Better Auth catch-all API handler
+        platform/      # GET/POST platform CRUD (SQLite)
+        upload/        # POST: FormData → Cloudinary → DB record
+        documents/     # GET: list docs, DELETE: remove from Cloudinary + DB
+    /src/lib
+      auth.ts          # Better Auth server config (SQLite, Google OAuth, 7d sessions)
+      auth-client.ts   # Better Auth React client (signIn, signUp, signOut, useSession)
+      db.ts            # SQLite helper: platform + platform_document tables + CRUD
+      cloudinary.ts    # Cloudinary upload/delete helpers (10MB limit)
+    /src/components/landing
+      navbar.tsx       # Floating navbar with scroll progress, mobile menu
+      hero-section.tsx # Animated code terminal, typewriter effect
+      features-grid.tsx# Interactive vision/voice/auth demo tiles
+      how-it-works.tsx # Scroll-driven animation, step cards (id="how-it-works")
+      tech-stack.tsx   # Spotlight hover cards
+      cta-section.tsx  # CTA with star dust background
+      footer.tsx       # Footer with status indicator
+    /src
+      middleware.ts    # Route protection: /dashboard/*, /onboarding/*
+  /mock-crm            # Static HTML/CSS/JS CRM demo (6 pages)
+    index.html         # Dashboard: stats, revenue chart, activity feed, top deals
+    contacts.html      # Contact list with search, import, add, filter
+    deals.html         # Kanban pipeline board (6 stage columns)
+    reports.html       # KPIs, revenue trend, pipeline breakdown, team activity
+    billing.html       # Plan comparison (Free/Pro/Enterprise), invoices
+    settings.html      # Account, notifications, team, integrations, danger zone
+    styles.css         # Full dark theme CSS (~400 lines)
+    mock-data.js       # Contacts, deals, activity, revenue, invoices
+    components.js      # Shared sidebar + header renderer
+    /knowledge         # Ocula AI knowledge documents for mock CRM
+      acme-crm-knowledge.md  # Full CRM knowledge base (pages, tasks, FAQ)
+      ui-element-map.md      # Precise UI element locations for visual grounding
+      quick-start-guide.md   # User onboarding guide
+/docs
+  ocula-knowledge-base-template.md  # Template for platform owners to create knowledge docs
 ```
 
 ## Development Commands
@@ -204,11 +253,44 @@ type ClientMsg =
 type ServerMsg =
   | { type: 'audio', data: string }      // Base64 PCM 24kHz
   | { type: 'text', text: string }
-  | { type: 'draw', action: 'arrow' | 'highlight', point: [y, x], label?: string };
+  | { type: 'assistant_response', text: string }  // AI transcription text
+  | { type: 'draw', action: 'apply' | 'clear', selector: string, label?: string };  // CSS highlight
 ```
 
-### SVG Overlay
-All overlays use `pointer-events: none` and `z-index: 999999`. Annotations have class `ocula-annotation` for batch clearing.
+### CSS Highlighting System
+The overlay engine injects `<style id="ocula-highlight-styles">` into the host DOM with:
+- `ocula-hl-active` class: Pulsing glow, color-shifting border, fade-in animation
+- `ocula-hl-label` div: Floating glassmorphism pill with `✦` icon
+- Applied via `classList.add`/`remove` — won't be overridden by host CSS
+
+### UI_SELECTORS Map (`live.ts`)
+A static map of known platform elements injected into the system prompt:
+```typescript
+export const UI_SELECTORS: Record<string, string> = {
+  'Sidebar': '#sidebar-root',
+  'Search Bar': '.search-bar',
+  'Stats Grid': '.stats-grid',
+  'Main Content': '.main-content',
+  // ... more elements
+};
+```
+This ensures the model uses exact CSS selectors rather than guessing from visual analysis.
+
+### Onboarding Tour
+Triggered **once** on the first `frame` message per session (`hasOnboarded` flag on `SessionState`).
+The server sends a text prompt instructing the model to welcome the user and sequentially highlight Sidebar → Search Bar → Stats Grid → Main Content using `clear_overlays` + `highlight_element` with descriptive labels.
+
+### Removed Tools (Session 6)
+The following SVG-based tools have been fully removed from the codebase:
+- ❌ `draw_arrow` — replaced by `highlight_element`
+- ❌ `draw_highlight` — replaced by `highlight_element`
+- ❌ `draw_circle` — replaced by `highlight_element`
+- ❌ `drawVisualGuide` — removed from `tools.ts` and `oculaTools` array
+
+The current tool set is: `inspectScreen`, `highlightElement`, `searchKnowledge`, `clearOverlays`.
+
+### SVG Overlay (Legacy)
+SVG overlay system (`drawArrow`, `drawCircle`, `highlightElement` with coordinates) still exists in `overlay.ts` for backwards compatibility but is no longer invoked by any tool. All active highlighting uses CSS classes.
 
 ## Reference Documentation
 See `docs/fetched/` for comprehensive Gemini 3 API docs:
@@ -229,13 +311,49 @@ See `docs/Ocula_AI_MVP_Specification.md` for:
 - https://docs.langchain.com/oss/javascript/langchain/tools - Tool definitions
 - https://docs.langchain.com/oss/javascript/langchain/middleware - Middleware patterns
 
-## MVP Constraints
-- No auth/billing - anonymous sessions only
+## MVP Constraints (Original — Phase 1-3)
 - Knowledge base is hardcoded in `server/knowledge/demo.md`
-- Single-tenant (no platform dashboard yet)
 - Use `MemorySaver` for checkpointing (in-memory, not persistent)
 - Skip HITL (`interrupt()`) - defer to post-MVP
 - Use `createAgent()` for ReAct loop (not manual StateGraph)
+
+## Extended Scope (Phase 5-8) ✅ COMPLETE
+After the core AI widget engine (Phases 1-4), the SaaS platform layer is fully implemented:
+
+### Authentication (Better Auth + Next.js) ✅
+- **Framework**: `better-auth` (TypeScript-first, framework-agnostic)
+- **Server**: Next.js catch-all route at `/api/auth/[...all]` using `auth.handler()`
+- **Database**: SQLite via `better-sqlite3` (shared `./sqlite.db` for auth + custom tables)
+- **Auth Methods**: Email/password (min 8 chars) + Google OAuth
+- **Client SDK**: `createAuthClient` from `better-auth/react` → `signIn`, `signUp`, `signOut`, `useSession`
+- **CLI**: `npx @better-auth/cli migrate` to create tables
+- **Sessions**: 7-day expiry, 24h refresh, 5-min cookie cache
+- **Env vars**: `BETTER_AUTH_SECRET` (min 32 chars), `BETTER_AUTH_URL=http://localhost:3000`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`
+
+### Web Dashboard (Next.js 15) ✅
+- Landing page with 6 animated sections (hero, features, how-it-works, tech-stack, CTA, footer)
+- Auth pages (sign-in, sign-up) with gradient mesh backgrounds
+- 2-step KYC onboarding form (platform info → contact info)
+- Dashboard with platform overview, embed script copy, knowledge base upload
+- Drag-and-drop document upload UI with progress + document list
+- Protected routes via `middleware.ts` session cookie check
+- Tailwind CSS v4 with dark theme (`--background: #050505`)
+
+### File Uploads (Cloudinary) ✅
+- Upload endpoint: `POST /api/upload` (FormData → Cloudinary → DB)
+- Document list: `GET /api/documents?platformId=...`
+- Delete: `DELETE /api/documents?id=...&publicId=...` (Cloudinary + DB cleanup)
+- Supported: PDF, PNG, JPG, WEBP, Markdown (max 10MB)
+- Cloudinary SDK v2 (^2.9.0)
+- Env vars: `CLOUDINARY_CLOUD_NAME=dr3cg1gim`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET`
+
+### Mock CRM Demo ✅
+- 6-page static CRM (dashboard, contacts, deals, reports, billing, settings)
+- Dark theme matching Ocula brand, Inter font, CSS variables
+- Realistic mock data (contacts, deals, activity, revenue, invoices)
+- Ocula widget embedded on every page: `<script src="http://localhost:3000/widget.js" data-platform-id="mock-crm-demo" data-server="ws://localhost:3001/ws">`
+- 3 knowledge documents for Ocula AI to digest (full KB, UI element map, quick-start guide)
+- Customer template document: `docs/ocula-knowledge-base-template.md`
 
 ---
 
@@ -358,17 +476,9 @@ case 'frame':
 2. **Stream visual commands**: As the model talks during the live interaction, it should emit visual overlay commands simultaneously — no separate "send query" step needed
 3. **Zero delay goal**: Audio guidance and visual annotations must appear at the same time during the live conversation
 
-#### ISSUE 4: Ugly / Unprofessional Visual Overlays
-**Severity**: 🟡 HIGH  
-**Symptom**: The current SVG arrows are too large, use harsh red colors (#FF4444), and the overall look is not polished or professional.  
-**Action required**:
-1. Redesign arrows to be smaller, sleeker, with modern aesthetics
-2. Use a refined color palette (e.g., brand purples/blues with subtle glow effects instead of harsh red)
-3. Add smooth entry animations (fade-in, slide-in)
-4. Use rounded, pill-shaped label backgrounds instead of plain rectangles
-5. Add subtle drop shadows for depth
-6. Consider pulsing/breathing animations on target points to draw attention without being garish
-7. Ensure highlights use softer, translucent fills with clean borders
+#### ISSUE 4: Ugly / Unprofessional Visual Overlays ✅ RESOLVED (Session 6)
+**Severity**: ✅ RESOLVED
+**Fix**: Replaced inline styles with CSS class-based system (`ocula-hl-active`) that injects `<style>` into host DOM with pulsing glow, glassmorphism labels, and animations. See Session 6 log.
 
 ---
 
@@ -438,9 +548,11 @@ langsmith ^0.4.12
 
 #### Tools Defined (`agents/tools.ts`)
 1. **`inspect_screen`** — Calls `analyzeScreenWithGemini()` to analyze screen content; accepts `query` and `screenBase64`
-2. **`draw_visual_guide`** — Returns `{ command: 'draw', ... }` JSON for client overlay rendering
+2. **`highlight_element`** — Returns `{ command: 'draw', type: 'highlight_element', selector, label, action }` JSON for CSS highlighting
 3. **`search_knowledge`** — Calls `lookupKnowledge(query)` from knowledge module
 4. **`clear_overlays`** — Returns `{ command: 'clear' }` JSON
+
+> **Note**: Old tools `draw_visual_guide` / `draw_arrow` / `draw_highlight` / `draw_circle` have been **completely removed** (Session 6).
 
 All tools use `tool()` helper from `langchain` with Zod schemas and `.describe()` on every field.
 
@@ -504,5 +616,206 @@ if (msgAny.tool_calls && msgAny.tool_calls.length > 0) { ... }
 ### 🔜 Next Up: Phase 2 Day 4 — Agentic Vision
 
 **Status**: Partially pre-built from Phase 1 (`gemini/vision.ts` already exists with `AgenticVision` class, `analyzeScreenWithGemini()`, `findElement()`, thought signature extraction). Day 4 checklist items need formal verification and any gaps filled.
+
+==================
+
+## Session 3: Day 4 — Agentic Vision + Live API Tools ✅ COMPLETE
+
+**Date**: Feb 7, 2026
+**Scope**: Resolve all 4 critical issues from Phase 1, implement Live API function calling tools, and redesign overlay visuals.
+**Result**: All 4 critical issues resolved, 0 TypeScript errors
+
+### What Was Done
+
+#### ISSUE 1 FIX: Silent Audio Keepalive
+- `startSilentAudio()` sends 100ms silent PCM16 frames every 250ms when mic is off but screen share is active
+- `stopSilentAudio()` called when real mic audio arrives
+- Vision now works reliably without microphone
+
+#### ISSUE 2 FIX: Scroll-Offset Tracking
+- `CapturedFrame` interface with `scrollX`, `scrollY`, `viewportWidth`, `viewportHeight`
+- Client sends scroll offsets with every frame
+- Server tracks `lastScrollX`/`lastScrollY` per session, forwards with draw commands
+- Overlay engine compensates for scroll delta between capture time and render time
+
+#### ISSUE 3 FIX: Live API Function Calling (Zero Latency)
+- 5 function declarations registered in Live API session: `highlight_element`, `clear_overlays`, `search_knowledge`
+- **Removed**: `draw_arrow`, `draw_highlight`, `draw_circle` (replaced by CSS `highlight_element`)
+- `handleLiveToolCall()` on server processes tool calls during voice conversation
+- `sendToolResponse()` reports results back to Gemini
+- Visual commands emitted in real-time alongside voice — no separate API call needed
+- System prompt updated with overlay tool instructions
+
+#### ISSUE 4 FIX: Overlay Redesign
+- Brand purple (#7C5CFC) color scheme
+- Pill-shaped labels with drop shadows
+- Smooth CSS animations (fade-in, draw-line, pulse, ring-pulse)
+- Smaller arrows with subtle glow
+- Translucent highlight fills with breathing animation
+
+### All Critical Issues Resolved
+| Issue | Fix | Status |
+|-------|-----|--------|
+| Vision requires mic | Silent audio keepalive | ✅ |
+| Scroll misalignment | Scroll context tracking | ✅ |
+| ~50s overlay latency | Live API function calling | ✅ |
+| Ugly overlays | Modern redesign | ✅ |
+
+==================
+
+## Session 4: Day 5 — Advanced Visual Overlay System ✅ COMPLETE
+
+**Date**: Feb 8, 2026
+**Scope**: Complete rewrite of `overlay.ts` with premium visual polish features.
+**Result**: Full overlay engine v3, 0 TypeScript errors in both packages
+
+### What Was Done
+
+Complete rewrite of `apps/client-sdk/src/overlay.ts` (~460 lines) with all Day 5 features:
+
+#### 1. AnnotationRecord Tracking
+- Every annotation tracked in `Map<string, AnnotationRecord>` with id, type, coords, SVG group, anchored element, scroll context
+- All draw methods now return a `string` annotation ID for targeted removal via `removeAnnotation(id)`
+
+#### 2. DOM Anchoring
+- `findAnchorElement(px, py)` hides overlay container, calls `document.elementFromPoint()` to find the real DOM element underneath
+- Stores offset from element's top-left corner
+- Annotations stick to their anchored element across scrolls/resizes
+
+#### 3. requestAnimationFrame Repositioning Loop
+- `startTrackingLoop()` runs every 2nd animation frame (~30 fps at 60 Hz)
+- For each annotation: if anchored element is `.isConnected`, uses `getBoundingClientRect()` to reposition; otherwise falls back to scroll-delta correction
+- Applies shift via single `transform="translate()"` on the SVG group
+
+#### 4. Glassmorphism-Inspired SVG Labels
+- New SVG filter `ocula-glass-blur` (feGaussianBlur + feComposite) approximating frosted glass
+- Blurred glow rect behind each pill + inner top-highlight rect for depth
+- Text measured accurately via hidden `SVGTextElement.getComputedTextLength()` (fallback: charWidth estimate)
+
+#### 5. Double-Ring Ripple Pulsing
+- Two concentric expanding/fading rings staggered by 0.9s on arrow targets and circles
+- Creates organic "AI is thinking here" pulsing effect
+
+#### 6. Fade-Out Exit Animations
+- CSS keyframe `ocula-fade-out`: opacity 1→0, translateY 0→-8px, 250ms
+- `clear()` applies class, waits for animation, then removes + clears annotation map
+- Individual `removeAnnotation(id)` also supports fade-out
+
+#### 7. Off-Screen Label Clamping
+- Label pill positions clamped to viewport bounds with 8px padding on all edges
+
+#### 8. Build Verification
+- `tsc --noEmit` passes with 0 errors on both `client-sdk` and `server` packages
+- No changes needed to `index.ts` — new overlay API is backward-compatible (methods return `string` instead of `void`, which is safe)
+
+### Architecture Post-Day 5
+
+| Component | Lines | Status |
+|-----------|-------|--------|
+| `overlay.ts` (v3) | ~460 | ✅ Rewritten |
+| `index.ts` (client SDK) | 347 | ✅ No changes needed |
+| `connection.ts` | 294 | ✅ Unchanged |
+| `capture.ts` | ~200 | ✅ Unchanged |
+| `audio.ts` | ~200 | ✅ Unchanged |
+
+==================
+
+## Session 5: Days 6-10 — SaaS Platform Layer ✅ COMPLETE
+
+**Date**: February 8, 2026
+**Scope**: Complete implementation of Phases 5-8 (Landing Page, Auth, Onboarding, Dashboard, File Uploads, Mock CRM)
+**Result**: All SaaS platform features implemented, 0 TypeScript errors, 11 pages compiled
+
+---
+
+### Phase 5: Landing Page & Authentication ✅
+
+**Created 17 files** in `apps/web/`:
+- Landing page with 6 animated sections (navbar, hero, features, how-it-works, tech-stack, CTA, footer)
+- Auth pages (sign-in, sign-up) with better-auth email + Google OAuth
+- Root layout with Inter font, Tailwind CSS v4 dark theme
+- Middleware for route protection (`/dashboard/*`, `/onboarding/*`)
+- Better Auth server + client config (SQLite, 7-day sessions, cookie cache)
+
+### Phase 6: Platform Onboarding & Dashboard ✅
+
+**Created 5 files**:
+- `db.ts` — SQLite helper with `platform` table + CRUD
+- `platform/route.ts` — GET/POST API for platform data
+- `onboarding/page.tsx` — 2-step KYC form (platform info → contact info)
+- `dashboard/page.tsx` — Platform overview, embed script, knowledge base upload
+- `(dashboard)/layout.tsx` — Protected layout with platform check
+
+### Phase 7: Knowledge Pipeline & File Uploads ✅
+
+**Created/modified 5 files**:
+- `cloudinary.ts` — Upload/delete helpers, 10MB limit, file type detection
+- `db.ts` (updated) — Added `platform_document` table + document CRUD
+- `upload/route.ts` — POST: FormData → Cloudinary → DB
+- `documents/route.ts` — GET: list docs, DELETE: Cloudinary + DB cleanup
+- `dashboard/page.tsx` (updated) — Drag-and-drop upload UI, document list
+
+### Phase 8: Mock CRM & Demo ✅
+
+**Created 12 files** in `apps/mock-crm/`:
+- 6 HTML pages (dashboard, contacts, deals, reports, billing, settings)
+- Shared assets (styles.css, mock-data.js, components.js)
+- 3 knowledge documents for Ocula AI (acme-crm-knowledge.md, ui-element-map.md, quick-start-guide.md)
+- Customer template document: `docs/ocula-knowledge-base-template.md`
+
+### Link Audit & Fixes
+
+Comprehensive audit found and fixed 16+ broken links:
+- Fixed `/login` → `/sign-in`, `/register` → `/sign-up` in navbar.tsx
+- Removed dead routes (`/docs`, `/blog`, `#pricing`) from navbar
+- Wired dead buttons in hero-section.tsx and cta-section.tsx to real routes
+- Populated 8 placeholder `#` links in footer.tsx with real destinations
+- Added `id="how-it-works"` anchor target to how-it-works.tsx
+- Removed orphan `/settings/:path*` from middleware.ts matcher
+
+### Environment Variables (Complete)
+```bash
+# Server (apps/server/.env)
+GEMINI_API_KEY=...
+LANGSMITH_TRACING_V2=false
+LANGSMITH_API_KEY=...
+LANGSMITH_PROJECT=ocula-ai-mvp
+
+# Web (apps/web/.env)
+BETTER_AUTH_SECRET=...       # min 32 chars
+BETTER_AUTH_URL=http://localhost:3000
+GOOGLE_CLIENT_ID=...
+GOOGLE_CLIENT_SECRET=...
+CLOUDINARY_CLOUD_NAME=dr3cg1gim
+CLOUDINARY_API_KEY=...
+CLOUDINARY_API_SECRET=...
+```
+
+==================
+
+## Session 6: Day 11 — Highlighting, Double Response & Onboarding ✅ COMPLETE
+
+**Date**: Feb 10, 2026
+
+### Changes
+| File | Change |
+|------|--------|
+| `overlay.ts` | CSS class highlight system (`ocula-hl-active` + glassmorphism labels), replaced inline styles |
+| `live.ts` | `UI_SELECTORS` map + `formatSelectorMap()`, removed duplicate `part.text` forwarding |
+| `index.ts` | Fixed action bug (`'highlight_element'` → `action || 'apply'`), `hasOnboarded` flag, onboarding on first frame, selector-aware system prompt |
+| `tools.ts` | Refined `highlight_element` description for wrapper targeting |
+
+### Key Patterns
+- **Highlight**: `classList.add('ocula-hl-active')` + injected `<style>` into host DOM
+- **Floating Labels**: Pure HTML `<div class="ocula-hl-label">` with glassmorphism, positioned via `getBoundingClientRect()` + rAF tracking loop
+- **Selectors**: `UI_SELECTORS` map injected into system prompt via `formatSelectorMap()`
+- **No double text**: Only `outputTranscription.text` forwarded (not `part.text`) in AUDIO modality
+- **Onboarding**: `hasOnboarded` flag on `SessionState`, triggered on first `frame` message
+- **Tool removal**: `draw_arrow`, `draw_highlight`, `draw_circle`, `drawVisualGuide` all removed from server + client
+- **Action fix**: `handleLiveToolCall` sends `action || 'apply'` instead of hardcoded `'highlight_element'`
+- **Highlight description**: Updated to instruct model to target outermost container elements
+- **Label support**: `highlight_element` now accepts optional `label` parameter, rendered as floating glassmorphism pill
+- **VisualCommand interface**: Simplified to `type: 'highlight_element' | 'clear'` with `selector`, `label`, `action`
+
 
 ==================

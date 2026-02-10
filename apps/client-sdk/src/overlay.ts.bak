@@ -1,0 +1,935 @@
+/**
+ * Overlay Engine v3 — Day 5: Advanced Visual Overlay System
+ *
+ * A premium "AI-native" overlay engine that renders annotations
+ * on top of any host SaaS page. Designed to feel integrated rather
+ * than pasted on top.
+ *
+ * Day 5 Features:
+ * - DOM-anchoring: overlays stick to actual DOM elements across scrolls
+ * - requestAnimationFrame repositioning loop (~30 fps)
+ * - Glassmorphism-inspired SVG labels (frosted-glass simulation)
+ * - Double-ring "ripple" pulsing target points
+ * - Animated SVG path draw-in (stroke-dashoffset)
+ * - Smooth fade-out exit animation on clear()
+ * - Off-screen label clamping
+ * - Measured text widths via hidden SVG text element
+ * - Per-annotation tracking via AnnotationRecord map
+ */
+
+// ─── Types & Interfaces ─────────────────────────────────────────────
+
+/** Visual command types */
+export type OverlayType = 'arrow' | 'highlight' | 'circle' | 'clear';
+
+/** Overlay configuration */
+export interface OverlayConfig {
+  arrowColor?: string;
+  highlightColor?: string;
+  highlightBorderColor?: string;
+  circleColor?: string;
+  labelBackground?: string;
+  labelBorder?: string;
+  labelColor?: string;
+  glowEnabled?: boolean;
+  animationsEnabled?: boolean;
+}
+
+/** Scroll context from the frame capture */
+export interface ScrollContext {
+  captureScrollX: number;
+  captureScrollY: number;
+}
+
+/** Internal annotation tracking record */
+interface AnnotationRecord {
+  id: string;
+  type: OverlayType;
+  /** Original normalized coords (0-1000) — used as fallback */
+  normalizedY: number;
+  normalizedX: number;
+  normalizedW?: number;
+  normalizedH?: number;
+  label?: string;
+  /** The SVG <g> element for this annotation */
+  group: SVGGElement;
+  /** DOM element the annotation is anchored to (may be null) */
+  anchoredElement: Element | null;
+  /** Offset from the anchored element's top-left */
+  anchorOffsetX: number;
+  anchorOffsetY: number;
+  /** Scroll context at creation time */
+  scrollContext: ScrollContext;
+}
+
+// ─── Defaults ────────────────────────────────────────────────────────
+
+const DEFAULT_CONFIG: Required<OverlayConfig> = {
+  arrowColor: '#7C5CFC',
+  highlightColor: 'rgba(124, 92, 252, 0.10)',
+  highlightBorderColor: 'rgba(124, 92, 252, 0.6)',
+  circleColor: '#7C5CFC',
+  labelBackground: 'rgba(15, 10, 40, 0.78)',
+  labelBorder: 'rgba(124, 92, 252, 0.35)',
+  labelColor: '#FFFFFF',
+  glowEnabled: true,
+  animationsEnabled: true,
+};
+
+// ─── Constants ───────────────────────────────────────────────────────
+
+const EDGE_PAD = 8;          // px padding from viewport edges for labels
+const RAF_SKIP = 2;          // process every Nth rAF frame (~30 fps at 60 Hz)
+const FADE_OUT_MS = 250;     // exit animation duration
+
+// ─── OverlayEngine ──────────────────────────────────────────────────
+
+/**
+ * OverlayEngine v3 — Renders SVG visual overlays with DOM anchoring
+ */
+export class OverlayEngine {
+  private svg!: SVGSVGElement;
+  private container!: HTMLDivElement;
+  private config: Required<OverlayConfig>;
+  private isInitialized = false;
+  private scrollContext: ScrollContext = { captureScrollX: 0, captureScrollY: 0 };
+
+  /** All live annotations keyed by unique id */
+  private annotations = new Map<string, AnnotationRecord>();
+  private nextId = 1;
+
+  /** Tracked CSS highlights */
+  private activeHighlights = new Map<string, { 
+    element: HTMLElement; 
+    originalBorder: string; 
+    originalScroll: string;
+    originalBoxShadow: string;
+    labelId?: string;
+  }>();
+
+  /** Active highlight sequence state */
+  private sequenceAbortController: AbortController | null = null;
+
+  /** rAF tracking loop */
+  private rafId: number | null = null;
+  private rafFrameCounter = 0;
+
+  /** Hidden text element used for measuring label widths */
+  private measureText!: SVGTextElement;
+
+  constructor(config: OverlayConfig = {}) {
+    this.config = { ...DEFAULT_CONFIG, ...config };
+  }
+
+  // ── Lifecycle ──────────────────────────────────────────────────────
+
+  /**
+   * Initialize the overlay system and start the repositioning loop.
+   */
+  init(): void {
+    if (this.isInitialized) return;
+
+    // Inject CSS animations
+    const styleEl = document.createElement('style');
+    styleEl.id = 'ocula-overlay-styles';
+    styleEl.textContent = this.buildCSS();
+    document.head.appendChild(styleEl);
+
+    // Container — fixed viewport overlay
+    this.container = document.createElement('div');
+    this.container.id = 'ocula-overlay';
+    this.container.style.cssText = `
+      position: fixed; top: 0; left: 0;
+      width: 100vw; height: 100vh;
+      pointer-events: none; z-index: 999999;
+      overflow: visible;
+    `;
+
+    // SVG canvas
+    this.svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    this.svg.setAttribute('width', '100%');
+    this.svg.setAttribute('height', '100%');
+    this.svg.style.cssText = 'overflow: visible;';
+    this.svg.innerHTML = this.buildDefs();
+
+    // Hidden measurement text element
+    this.measureText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+    this.measureText.setAttribute('font-size', '12');
+    this.measureText.setAttribute('font-weight', '600');
+    this.measureText.setAttribute('font-family',
+      '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif');
+    this.measureText.setAttribute('visibility', 'hidden');
+    this.measureText.setAttribute('aria-hidden', 'true');
+    this.svg.appendChild(this.measureText);
+
+    this.container.appendChild(this.svg);
+    document.body.appendChild(this.container);
+    this.isInitialized = true;
+
+    // Start repositioning loop
+    this.startTrackingLoop();
+
+    console.log('[Ocula] Overlay engine v3 initialized');
+  }
+
+  /**
+   * Set the scroll context from the last captured frame.
+   */
+  setScrollContext(ctx: ScrollContext): void {
+    this.scrollContext = ctx;
+  }
+
+  /**
+   * Clear all annotations with fade-out animation.
+   */
+  clear(): void {
+    if (!this.isInitialized) return;
+
+    // Cancel any active highlight sequence
+    this.cancelSequence();
+
+    const records = Array.from(this.annotations.values());
+
+    // Animated exit for SVG annotations
+    if (records.length > 0) {
+      if (this.config.animationsEnabled) {
+        records.forEach(rec => {
+          rec.group.classList.add('ocula-fade-out');
+        });
+        setTimeout(() => {
+          records.forEach(rec => {
+            rec.group.remove();
+            this.annotations.delete(rec.id);
+          });
+        }, FADE_OUT_MS + 50);
+      } else {
+        records.forEach(rec => {
+          rec.group.remove();
+          this.annotations.delete(rec.id);
+        });
+      }
+    }
+
+    // Clear CSS highlights with fadeout animation
+    if (this.activeHighlights.size > 0) {
+      this.activeHighlights.forEach((_data, selector) => {
+        this.clearHighlight(selector);
+      });
+    }
+
+    console.log('[Ocula] Overlays cleared');
+  }
+
+  /**
+   * Remove a single annotation by id with fade-out.
+   */
+  removeAnnotation(id: string): void {
+    const rec = this.annotations.get(id);
+    if (!rec) return;
+    if (this.config.animationsEnabled) {
+      rec.group.classList.add('ocula-fade-out');
+      setTimeout(() => {
+        rec.group.remove();
+        this.annotations.delete(id);
+      }, FADE_OUT_MS + 50);
+    } else {
+      rec.group.remove();
+      this.annotations.delete(id);
+    }
+  }
+
+  /**
+   * Tear down the entire overlay system.
+   */
+  destroy(): void {
+    this.stopTrackingLoop();
+    if (this.isInitialized) {
+      this.annotations.clear();
+      this.container.remove();
+      document.getElementById('ocula-overlay-styles')?.remove();
+      this.isInitialized = false;
+    }
+    console.log('[Ocula] Overlay engine destroyed');
+  }
+
+  // ── Drawing Methods ───────────────────────────────────────────────
+
+
+
+  /**
+   * Inject the highlight CSS stylesheet into the host page's DOM.
+   * Called once, on first highlight usage.
+   */
+  private highlightStylesInjected = false;
+  private injectHighlightStyles(): void {
+    if (this.highlightStylesInjected) return;
+    this.highlightStylesInjected = true;
+
+    const style = document.createElement('style');
+    style.id = 'ocula-highlight-styles';
+    style.textContent = `
+      /* ─── Ocula AI Highlight System v2 ─── Smooth & Professional ─── */
+
+      @keyframes ocula-hl-pulse {
+        0%, 100% {
+          box-shadow:
+            0 0 0 2px rgba(124, 92, 252, 0.55),
+            0 0 0 4px rgba(124, 92, 252, 0.2),
+            0 0 12px rgba(124, 92, 252, 0.18),
+            0 0 25px rgba(124, 92, 252, 0.08);
+        }
+        50% {
+          box-shadow:
+            0 0 0 2.5px rgba(124, 92, 252, 0.7),
+            0 0 0 5px rgba(124, 92, 252, 0.28),
+            0 0 18px rgba(124, 92, 252, 0.25),
+            0 0 35px rgba(124, 92, 252, 0.1);
+        }
+      }
+
+      @keyframes ocula-hl-border-flow {
+        0%   { outline-color: rgba(124, 92, 252, 0.6); }
+        33%  { outline-color: rgba(99, 102, 241, 0.65); }
+        66%  { outline-color: rgba(139, 92, 246, 0.65); }
+        100% { outline-color: rgba(124, 92, 252, 0.6); }
+      }
+
+      @keyframes ocula-hl-label-float {
+        0%, 100% { transform: translateX(-50%) translateY(0); }
+        50% { transform: translateX(-50%) translateY(-2px); }
+      }
+
+      @keyframes ocula-hl-fadein {
+        from { opacity: 0; transform: scale(0.97); }
+        to   { opacity: 1; transform: scale(1); }
+      }
+
+      @keyframes ocula-hl-fadeout {
+        from { opacity: 1; transform: scale(1); }
+        to   { opacity: 0; transform: scale(0.98); }
+      }
+
+      @keyframes ocula-label-fadein {
+        from { opacity: 0; transform: translateX(-50%) translateY(6px); }
+        to   { opacity: 1; transform: translateX(-50%) translateY(0); }
+      }
+
+      @keyframes ocula-label-fadeout {
+        from { opacity: 1; transform: translateX(-50%) translateY(0); }
+        to   { opacity: 0; transform: translateX(-50%) translateY(-6px); }
+      }
+
+      .ocula-hl-active {
+        outline: 2px solid rgba(124, 92, 252, 0.6) !important;
+        outline-offset: 3px !important;
+        border-radius: inherit;
+        animation:
+          ocula-hl-pulse 2.5s ease-in-out infinite,
+          ocula-hl-border-flow 4s linear infinite,
+          ocula-hl-fadein 0.4s cubic-bezier(0.22, 1, 0.36, 1) both !important;
+        position: relative;
+        z-index: 10 !important;
+        transition: none !important;
+      }
+
+      .ocula-hl-exiting {
+        animation: ocula-hl-fadeout 0.3s ease-out forwards !important;
+        pointer-events: none;
+      }
+
+      .ocula-hl-label {
+        position: fixed;
+        z-index: 1000000;
+        pointer-events: none;
+        transform: translateX(-50%);
+        animation: ocula-label-fadein 0.35s cubic-bezier(0.22, 1, 0.36, 1) both,
+                   ocula-hl-label-float 3s ease-in-out 0.35s infinite;
+        /* Glassmorphism pill */
+        padding: 6px 16px 6px 14px;
+        border-radius: 20px;
+        background: rgba(10, 8, 30, 0.88);
+        backdrop-filter: blur(16px);
+        -webkit-backdrop-filter: blur(16px);
+        border: 1px solid rgba(124, 92, 252, 0.3);
+        box-shadow:
+          0 4px 24px rgba(0, 0, 0, 0.35),
+          0 0 12px rgba(124, 92, 252, 0.12),
+          inset 0 1px 0 rgba(255, 255, 255, 0.05);
+        /* Text */
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        font-size: 12px;
+        font-weight: 600;
+        letter-spacing: 0.3px;
+        color: #fff;
+        white-space: nowrap;
+      }
+      .ocula-hl-label::before {
+        content: '◆ ';
+        font-size: 8px;
+        vertical-align: middle;
+        color: rgba(124, 92, 252, 0.8);
+        margin-right: 2px;
+      }
+      .ocula-hl-label.ocula-label-exiting {
+        animation: ocula-label-fadeout 0.3s ease-out forwards !important;
+      }
+    `;
+    document.head.appendChild(style);
+  }
+
+  /**
+   * Highlight an element using CSS classes + floating label.
+   * Injects a premium stylesheet with pulsing glow, animated border,
+   * and glassmorphism label on the first call.
+   */
+  highlightElementBySelector(selector: string, label?: string, action: 'apply' | 'clear' = 'apply'): void {
+    if (!this.isInitialized) this.init();
+
+    if (action === 'clear') {
+      this.clearHighlight(selector);
+      return;
+    }
+
+    // Inject CSS on first use
+    this.injectHighlightStyles();
+
+    try {
+      const element = document.querySelector(selector) as HTMLElement;
+      if (!element) {
+        console.warn(`[Ocula] Could not find element to highlight: ${selector}`);
+        return;
+      }
+
+      // If already highlighted, skip
+      if (this.activeHighlights.has(selector)) return;
+
+      // Save original state
+      const originalBorder = element.style.outline;
+      const originalScroll = element.style.scrollMargin;
+      const originalBoxShadow = element.style.boxShadow;
+
+      // Apply the highlight CSS class
+      element.classList.add('ocula-hl-active');
+      element.style.scrollMargin = '100px';
+
+      // Scroll into view
+      element.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
+
+      // Create floating label if text provided
+      let labelId: string | undefined;
+      if (label) {
+        labelId = `ocula-label-${this.nextId++}`;
+        const labelEl = document.createElement('div');
+        labelEl.id = labelId;
+        labelEl.className = 'ocula-hl-label';
+        labelEl.textContent = label;
+        document.body.appendChild(labelEl);
+
+        // Position label above element after scroll settles
+        const positionLabel = () => {
+          const rect = element.getBoundingClientRect();
+          labelEl.style.left = `${rect.left + rect.width / 2}px`;
+          labelEl.style.top = `${rect.top - 40}px`;
+        };
+        // Initial position + reposition on next frame after scroll
+        positionLabel();
+        setTimeout(positionLabel, 400);
+
+        // Keep repositioning label with rAF so it tracks scroll/resize
+        const trackLabel = () => {
+          if (!document.getElementById(labelId!)) return;
+          positionLabel();
+          requestAnimationFrame(trackLabel);
+        };
+        requestAnimationFrame(trackLabel);
+      }
+
+      this.activeHighlights.set(selector, {
+        element,
+        originalBorder,
+        originalScroll,
+        originalBoxShadow,
+        labelId,
+      });
+
+      console.log(`[Ocula] Highlighted ${selector}`);
+    } catch (err) {
+      console.error(`[Ocula] Error highlighting ${selector}:`, err);
+    }
+  }
+
+  private clearHighlight(selector: string): void {
+    const data = this.activeHighlights.get(selector);
+    if (!data) return;
+
+    const { element, originalBorder, originalScroll, originalBoxShadow, labelId } = data;
+
+    // Animated fadeout: add exiting class, then clean up after animation
+    element.classList.remove('ocula-hl-active');
+    element.classList.add('ocula-hl-exiting');
+
+    // Fade out the label
+    if (labelId) {
+      const labelEl = document.getElementById(labelId);
+      if (labelEl) {
+        labelEl.classList.add('ocula-label-exiting');
+      }
+    }
+
+    // Clean up after fadeout animation completes (300ms)
+    setTimeout(() => {
+      element.classList.remove('ocula-hl-exiting');
+      
+      // Remove floating label
+      if (labelId) {
+        const labelEl = document.getElementById(labelId);
+        if (labelEl) labelEl.remove();
+      }
+
+      // Restore original styles
+      element.style.outline = originalBorder;
+      element.style.scrollMargin = originalScroll;
+      element.style.boxShadow = originalBoxShadow;
+    }, 320);
+
+    this.activeHighlights.delete(selector);
+  }
+
+  /**
+   * Smoothly clear all highlights with fadeout animation.
+   * Returns a promise that resolves after all fadeouts complete.
+   */
+  clearAllHighlightsAnimated(): Promise<void> {
+    if (this.activeHighlights.size === 0) return Promise.resolve();
+
+    const selectors = Array.from(this.activeHighlights.keys());
+    selectors.forEach(sel => this.clearHighlight(sel));
+
+    // Wait for fadeout animation to complete
+    return new Promise(resolve => setTimeout(resolve, 350));
+  }
+
+  /**
+   * Cancel any running highlight sequence.
+   */
+  cancelSequence(): void {
+    if (this.sequenceAbortController) {
+      this.sequenceAbortController.abort();
+      this.sequenceAbortController = null;
+    }
+  }
+
+  /**
+   * Play a sequence of highlights one-by-one with smooth crossfade transitions.
+   *
+   * Each step:
+   * 1. Fade out the previous highlight (300ms)
+   * 2. Wait a brief gap (100ms)
+   * 3. Fade in the new highlight (400ms)
+   * 4. Hold for delay_ms (default 3000ms) before moving to the next step
+   *
+   * The sequence auto-cancels on new user input or when cancelSequence() is called.
+   */
+  async playHighlightSequence(
+    steps: Array<{ selector: string; label: string; delay_ms?: number }>,
+    onStepStart?: (stepIndex: number) => void
+  ): Promise<void> {
+    // Cancel any running sequence
+    this.cancelSequence();
+
+    const controller = new AbortController();
+    this.sequenceAbortController = controller;
+
+    // Inject styles on first use
+    this.injectHighlightStyles();
+
+    if (!this.isInitialized) this.init();
+
+    console.log(`[Ocula] Starting highlight sequence with ${steps.length} steps`);
+
+    for (let i = 0; i < steps.length; i++) {
+      // Check if aborted
+      if (controller.signal.aborted) {
+        console.log('[Ocula] Highlight sequence cancelled');
+        return;
+      }
+
+      const step = steps[i];
+      onStepStart?.(i);
+
+      // Fade out previous highlight(s) smoothly
+      await this.clearAllHighlightsAnimated();
+
+      // Check abort again after async wait
+      if (controller.signal.aborted) return;
+
+      // Brief pause between fadeout and fadein for visual breathing room
+      await this.sleep(100, controller.signal);
+      if (controller.signal.aborted) return;
+
+      // Apply the new highlight
+      this.highlightElementBySelector(step.selector, step.label, 'apply');
+
+      // Hold this highlight for the specified duration
+      const holdDuration = step.delay_ms ?? 3000;
+      await this.sleep(holdDuration, controller.signal);
+    }
+
+    // Sequence complete — leave the last highlight active for a bit, then auto-clear
+    if (!controller.signal.aborted) {
+      await this.sleep(5000, controller.signal);
+      if (!controller.signal.aborted) {
+        await this.clearAllHighlightsAnimated();
+      }
+    }
+
+    // Clean up the controller if it's still ours
+    if (this.sequenceAbortController === controller) {
+      this.sequenceAbortController = null;
+    }
+
+    console.log('[Ocula] Highlight sequence completed');
+  }
+
+  /** Sleep with abort support */
+  private sleep(ms: number, signal?: AbortSignal): Promise<void> {
+    return new Promise((resolve) => {
+      if (signal?.aborted) { resolve(); return; }
+      const timer = setTimeout(resolve, ms);
+      signal?.addEventListener('abort', () => {
+        clearTimeout(timer);
+        resolve();
+      }, { once: true });
+    });
+  }
+
+  // ── DOM Anchoring ─────────────────────────────────────────────────
+
+  /**
+   * Attempt to find the DOM element at pixel coords (ignoring the overlay itself).
+   * Returns the element, or null if it's <html>/<body>/<svg>/the overlay container.
+   */
+  private findAnchorElement(px: number, py: number): Element | null {
+    // Temporarily hide our container so elementFromPoint looks through it
+    const prevPointerEvents = this.container.style.pointerEvents;
+    this.container.style.display = 'none';
+    let el: Element | null = null;
+    try {
+      el = document.elementFromPoint(px, py);
+    } catch { /* ignore */ }
+    this.container.style.display = '';
+    this.container.style.pointerEvents = prevPointerEvents;
+
+    if (!el) return null;
+    const tag = el.tagName.toLowerCase();
+    if (tag === 'html' || tag === 'body') return null;
+    return el;
+  }
+
+  // ── Repositioning Loop ────────────────────────────────────────────
+
+  /**
+   * Start the requestAnimationFrame tracking loop.
+   * On each tick (throttled to ~30 fps) re-position all annotations
+   * using their anchored DOM element if available.
+   */
+  private startTrackingLoop(): void {
+    if (this.rafId !== null) return;
+    const tick = () => {
+      this.rafId = requestAnimationFrame(tick);
+      this.rafFrameCounter++;
+      if (this.rafFrameCounter % RAF_SKIP !== 0) return; // throttle
+
+      for (const rec of this.annotations.values()) {
+        this.repositionAnnotation(rec);
+      }
+    };
+    this.rafId = requestAnimationFrame(tick);
+  }
+
+  private stopTrackingLoop(): void {
+    if (this.rafId !== null) {
+      cancelAnimationFrame(this.rafId);
+      this.rafId = null;
+    }
+  }
+
+  /**
+   * Reposition a single annotation.
+   *
+   * Strategy:
+   * 1. If anchoredElement is connected → use getBoundingClientRect()
+   * 2. Else → fall back to scroll-delta correction from capture time
+   *
+   * We compute the pixel delta between where the annotation was first drawn
+   * and where it should be now, then apply a CSS transform to the group.
+   * This avoids touching every child attribute while keeping SVG layout stable.
+   */
+  private repositionAnnotation(rec: AnnotationRecord): void {
+    // Current expected position
+    let currentX: number;
+    let currentY: number;
+
+    if (rec.anchoredElement && rec.anchoredElement.isConnected) {
+      // Anchored — get live bounding rect
+      const rect = rec.anchoredElement.getBoundingClientRect();
+      currentX = rect.left + rec.anchorOffsetX;
+      currentY = rect.top + rec.anchorOffsetY;
+    } else {
+      // Fallback — scroll-delta correction
+      const baseX = (rec.normalizedX / 1000) * window.innerWidth;
+      const baseY = (rec.normalizedY / 1000) * window.innerHeight;
+      const dx = window.scrollX - rec.scrollContext.captureScrollX;
+      const dy = window.scrollY - rec.scrollContext.captureScrollY;
+      currentX = baseX - dx;
+      currentY = baseY - dy;
+    }
+
+    // Original rendered position (what normalizedToPixels returned at create time)
+    const origX = (rec.normalizedX / 1000) * window.innerWidth
+      - (window.scrollX - rec.scrollContext.captureScrollX);
+    const origY = (rec.normalizedY / 1000) * window.innerHeight
+      - (window.scrollY - rec.scrollContext.captureScrollY);
+
+    // No need for a full recalc if using scroll-delta only (origX===currentX)
+    // but for anchored elements the delta will differ.
+    const shiftX = currentX - origX;
+    const shiftY = currentY - origY;
+
+    // Only apply if shift is non-trivial (> 0.5px)
+    if (Math.abs(shiftX) > 0.5 || Math.abs(shiftY) > 0.5) {
+      rec.group.setAttribute('transform', `translate(${shiftX.toFixed(1)},${shiftY.toFixed(1)})`);
+    } else {
+      rec.group.removeAttribute('transform');
+    }
+  }
+
+  // ── SVG Building Helpers ──────────────────────────────────────────
+
+  /** Convert 0-1000 normalized coords to viewport pixels with scroll correction. */
+  private normalizedToPixels(ny: number, nx: number): { x: number; y: number } {
+    const baseX = (nx / 1000) * window.innerWidth;
+    const baseY = (ny / 1000) * window.innerHeight;
+    const dx = window.scrollX - this.scrollContext.captureScrollX;
+    const dy = window.scrollY - this.scrollContext.captureScrollY;
+    return { x: baseX - dx, y: baseY - dy };
+  }
+
+  /** Measure text width accurately with the hidden SVG text element. */
+  private measureLabelWidth(text: string): number {
+    this.measureText.textContent = text;
+    try {
+      const len = this.measureText.getComputedTextLength();
+      if (len > 0) return len;
+    } catch { /* getComputedTextLength may throw if detached */ }
+    return text.length * 7.2; // fallback
+  }
+
+  /** Allocate a unique annotation id. */
+  private allocId(): string {
+    return `oa-${this.nextId++}`;
+  }
+
+  /** Create the annotation group element with shared class + data-id. */
+  private createGroup(id: string): SVGGElement {
+    const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    g.classList.add('ocula-annotation');
+    g.setAttribute('data-oa-id', id);
+    return g;
+  }
+
+  /** Shorthand to create an SVG element with attributes. */
+  private svgEl(tag: string, attrs: Record<string, string | number>): SVGElement {
+    const el = document.createElementNS('http://www.w3.org/2000/svg', tag);
+    for (const [k, v] of Object.entries(attrs)) {
+      el.setAttribute(k, String(v));
+    }
+    return el;
+  }
+
+  /** Register an annotation record for tracking. */
+  private registerAnnotation(
+    id: string, type: OverlayType,
+    ny: number, nx: number,
+    group: SVGGElement,
+    anchor: Element | null,
+    label?: string,
+    extra?: Partial<AnnotationRecord>,
+  ): void {
+    const { x: px, y: py } = this.normalizedToPixels(ny, nx);
+
+    // Compute anchor offset (distance from element top-left to our point)
+    let offsetX = 0;
+    let offsetY = 0;
+    if (anchor) {
+      const rect = anchor.getBoundingClientRect();
+      offsetX = px - rect.left;
+      offsetY = py - rect.top;
+    }
+
+    this.annotations.set(id, {
+      id, type,
+      normalizedY: ny, normalizedX: nx,
+      label,
+      group,
+      anchoredElement: anchor,
+      anchorOffsetX: offsetX,
+      anchorOffsetY: offsetY,
+      scrollContext: { ...this.scrollContext },
+      ...extra,
+    });
+  }
+
+  // ── Visual Components ─────────────────────────────────────────────
+
+  /**
+   * Double-ring ripple effect — two expanding/fading rings staggered in time.
+   * Creates an organic, "AI is thinking here" feel.
+   */
+  private addDoubleRingPulse(
+    parent: SVGGElement, cx: number, cy: number, baseRadius = 6,
+  ): void {
+    const ring = (delay: string) => {
+      const el = this.svgEl('circle', {
+        cx, cy, r: baseRadius,
+        fill: 'none', stroke: this.config.arrowColor, 'stroke-width': 1.5, opacity: 0,
+      });
+      if (this.config.animationsEnabled) {
+        el.innerHTML = `
+          <animate attributeName="r" values="${baseRadius};${baseRadius + 16};${baseRadius + 22}"
+            dur="1.8s" begin="${delay}" repeatCount="indefinite"/>
+          <animate attributeName="opacity" values="0.7;0.25;0"
+            dur="1.8s" begin="${delay}" repeatCount="indefinite"/>
+        `;
+      }
+      return el;
+    };
+    parent.appendChild(ring('0s'));
+    parent.appendChild(ring('0.9s'));
+  }
+
+  /**
+   * Glassmorphism-inspired pill label (SVG-only).
+   *
+   * Simulates frosted glass with:
+   * - Semi-transparent dark fill
+   * - Subtle colored border
+   * - Gaussian blur glow behind the pill
+   * - Inner light stroke for depth
+   * - Accurate text measurement
+   * - Off-screen clamping
+   */
+  private addGlassLabel(parent: SVGGElement, cx: number, cy: number, text: string): void {
+    const padX = 14;
+    const padY = 6;
+    const tw = this.measureLabelWidth(text);
+    const pillW = tw + padX * 2;
+    const pillH = 28;
+    const rx = pillH / 2;
+
+    // Clamp position so label stays fully inside viewport
+    let lx = cx - pillW / 2;
+    let ly = cy - pillH / 2;
+    lx = Math.max(EDGE_PAD, Math.min(window.innerWidth - pillW - EDGE_PAD, lx));
+    ly = Math.max(EDGE_PAD, Math.min(window.innerHeight - pillH - EDGE_PAD, ly));
+    const labelCx = lx + pillW / 2;
+    const labelCy = ly + pillH / 2;
+
+    // Glow background (blurred rect behind the pill for ethereal effect)
+    parent.appendChild(this.svgEl('rect', {
+      x: lx - 2, y: ly - 2, width: pillW + 4, height: pillH + 4,
+      rx: rx + 1, ry: rx + 1,
+      fill: this.config.arrowColor, opacity: 0.08,
+      filter: 'url(#ocula-glass-blur)',
+    }));
+
+    // Main pill background
+    parent.appendChild(this.svgEl('rect', {
+      x: lx, y: ly, width: pillW, height: pillH,
+      rx, ry: rx,
+      fill: this.config.labelBackground,
+      stroke: this.config.labelBorder,
+      'stroke-width': 1,
+      filter: 'url(#ocula-label-shadow)',
+    }));
+
+    // Inner light edge (top highlight for depth)
+    parent.appendChild(this.svgEl('rect', {
+      x: lx + 1, y: ly + 1, width: pillW - 2, height: pillH / 2 - 1,
+      rx: rx - 1, ry: rx - 1,
+      fill: 'rgba(255,255,255,0.06)', stroke: 'none',
+    }));
+
+    // Text
+    const label = this.svgEl('text', {
+      x: labelCx, y: labelCy + 1,
+      fill: this.config.labelColor,
+      'font-size': 12, 'font-weight': 600,
+      'font-family': '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+      'text-anchor': 'middle', 'dominant-baseline': 'middle',
+      'letter-spacing': '0.3',
+    });
+    label.textContent = text;
+    parent.appendChild(label);
+  }
+
+  // ── CSS & SVG Defs ────────────────────────────────────────────────
+
+  /** Build CSS keyframes for animations. */
+  private buildCSS(): string {
+    return `
+      @keyframes ocula-fade-in {
+        from { opacity: 0; transform: translateY(10px); }
+        to   { opacity: 1; transform: translateY(0); }
+      }
+      @keyframes ocula-fade-out {
+        from { opacity: 1; transform: translateY(0); }
+        to   { opacity: 0; transform: translateY(-8px); }
+      }
+      @keyframes ocula-draw-line {
+        to { stroke-dashoffset: 0; }
+      }
+      .ocula-annotation {
+        animation: ocula-fade-in 0.35s cubic-bezier(0.22,1,0.36,1) both;
+      }
+      .ocula-fade-out {
+        animation: ocula-fade-out ${FADE_OUT_MS}ms ease-in forwards !important;
+      }
+    `;
+  }
+
+  /** Build SVG <defs> for markers, filters, and gradients. */
+  private buildDefs(): string {
+    return `<defs>
+      <!-- Arrow marker -->
+      <marker id="ocula-arrowhead" markerWidth="8" markerHeight="6"
+              refX="7" refY="3" orient="auto" markerUnits="userSpaceOnUse">
+        <polygon points="0 0, 8 3, 0 6" fill="${this.config.arrowColor}"/>
+      </marker>
+
+      <!-- Soft glow -->
+      <filter id="ocula-glow" x="-40%" y="-40%" width="180%" height="180%">
+        <feGaussianBlur stdDeviation="3" result="blur"/>
+        <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+      </filter>
+
+      <!-- Label drop shadow -->
+      <filter id="ocula-label-shadow" x="-20%" y="-20%" width="140%" height="160%">
+        <feDropShadow dx="0" dy="3" stdDeviation="5" flood-color="rgba(0,0,0,0.3)"/>
+      </filter>
+
+      <!-- Line subtle shadow -->
+      <filter id="ocula-line-shadow" x="-10%" y="-10%" width="120%" height="120%">
+        <feDropShadow dx="0" dy="1" stdDeviation="2" flood-color="rgba(0,0,0,0.18)"/>
+      </filter>
+
+      <!-- Glassmorphism blur (behind pill labels) -->
+      <filter id="ocula-glass-blur" x="-30%" y="-30%" width="160%" height="160%">
+        <feGaussianBlur stdDeviation="8" result="blur"/>
+        <feComposite in="SourceGraphic" in2="blur" operator="over"/>
+      </filter>
+    </defs>`;
+  }
+}
+
+export default OverlayEngine;

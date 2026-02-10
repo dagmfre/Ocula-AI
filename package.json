@@ -8,10 +8,13 @@
     "dev": "pnpm --parallel run dev",
     "dev:server": "pnpm --filter @ocula/server dev",
     "dev:client": "pnpm --filter @ocula/client-sdk dev",
+    "dev:web": "pnpm --filter @ocula/web dev",
     "build": "pnpm --parallel run build",
     "build:server": "pnpm --filter @ocula/server build",
     "build:client": "pnpm --filter @ocula/client-sdk build",
-    "clean": "pnpm --parallel run clean"
+    "build:web": "pnpm --filter @ocula/web build",
+    "clean": "pnpm --parallel run clean",
+    "db:migrate": "pnpm --filter @ocula/web db:migrate"
   },
   "keywords": [
     "ai",
@@ -25,5 +28,10 @@
   "engines": {
     "node": ">=18.0.0",
     "pnpm": ">=8.0.0"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "better-sqlite3"
+    ]
   }
 }

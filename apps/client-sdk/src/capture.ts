@@ -90,6 +90,7 @@ export class ScreenCapture {
 
   /**
    * Capture a single frame as base64 JPEG
+   * Frames are downsized to max 1024px wide for faster transmission and processing.
    * @param quality - JPEG quality (0-1), default 0.7
    * @returns Base64 encoded JPEG string (without data URL prefix)
    */
@@ -109,12 +110,22 @@ export class ScreenCapture {
       scrollY: window.scrollY,
     };
 
-    // Set canvas to video dimensions
-    this.canvas.width = this.video.videoWidth;
-    this.canvas.height = this.video.videoHeight;
+    // Downsize to max 1024px wide for lower latency
+    const MAX_WIDTH = 1024;
+    let drawWidth = this.video.videoWidth;
+    let drawHeight = this.video.videoHeight;
+    if (drawWidth > MAX_WIDTH) {
+      const scale = MAX_WIDTH / drawWidth;
+      drawWidth = MAX_WIDTH;
+      drawHeight = Math.round(drawHeight * scale);
+    }
 
-    // Draw video frame to canvas
-    this.ctx.drawImage(this.video, 0, 0);
+    // Set canvas to (possibly downsized) dimensions
+    this.canvas.width = drawWidth;
+    this.canvas.height = drawHeight;
+
+    // Draw video frame to canvas (browser does the downscaling)
+    this.ctx.drawImage(this.video, 0, 0, drawWidth, drawHeight);
 
     // Convert to base64 JPEG
     const dataUrl = this.canvas.toDataURL('image/jpeg', quality);

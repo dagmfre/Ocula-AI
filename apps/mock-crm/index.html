@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard — Acme CRM</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="app-shell">
+    <div id="sidebar-root"></div>
+
+    <div class="main-content">
+      <header class="top-header">
+        <h1>Dashboard</h1>
+        <div class="header-actions">
+          <div class="search-bar">
+            <span>🔍</span>
+            <input type="text" placeholder="Search… (Ctrl+K)">
+          </div>
+          <button class="btn btn-primary btn-sm">+ New Deal</button>
+        </div>
+      </header>
+
+      <div class="page-content">
+        <!-- Stats Row -->
+        <div class="stats-grid">
+          <div class="stat-card">
+            <div class="stat-icon" style="background:rgba(79,70,229,0.12);color:var(--accent)">👥</div>
+            <div class="stat-value">847</div>
+            <div class="stat-label">Total Contacts</div>
+            <div class="stat-change up">↑ 12% from last month</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon" style="background:rgba(34,197,94,0.12);color:var(--success)">🤝</div>
+            <div class="stat-value">23</div>
+            <div class="stat-label">Active Deals</div>
+            <div class="stat-change up">↑ 4 new this week</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon" style="background:rgba(245,158,11,0.12);color:var(--warning)">💰</div>
+            <div class="stat-value">$58K</div>
+            <div class="stat-label">Revenue (Feb)</div>
+            <div class="stat-change up">↑ 18% vs Jan</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon" style="background:rgba(59,130,246,0.12);color:var(--info)">📧</div>
+            <div class="stat-value">92%</div>
+            <div class="stat-label">Email Open Rate</div>
+            <div class="stat-change down">↓ 2% from last week</div>
+          </div>
+        </div>
+
+        <div class="grid-2">
+          <!-- Revenue Chart -->
+          <div class="card">
+            <div class="card-header">
+              <h2>Monthly Revenue</h2>
+              <button class="btn btn-secondary btn-sm">Export</button>
+            </div>
+            <div class="chart-bars" id="revenue-chart"></div>
+          </div>
+
+          <!-- Activity Feed -->
+          <div class="card">
+            <div class="card-header">
+              <h2>Recent Activity</h2>
+              <button class="btn btn-secondary btn-sm">View All</button>
+            </div>
+            <div id="activity-feed" style="display:flex;flex-direction:column;gap:2px;"></div>
+          </div>
+        </div>
+
+        <!-- Top Deals -->
+        <div class="card mt-24">
+          <div class="card-header">
+            <h2>Top Deals in Pipeline</h2>
+            <a href="deals.html" style="font-size:13px;">View All →</a>
+          </div>
+          <div class="table-container">
+            <table>
+              <thead>
+                <tr>
+                  <th>Deal Name</th>
+                  <th>Contact</th>
+                  <th>Value</th>
+                  <th>Stage</th>
+                  <th>Probability</th>
+                </tr>
+              </thead>
+              <tbody id="deals-table"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Ocula AI Widget -->
+  <script src="http://localhost:3001/widget.js"
+    data-platform-id="mock-crm-demo"
+    data-server="ws://localhost:3001/ws">
+  </script>
+
+  <script src="mock-data.js"></script>
+  <script src="components.js"></script>
+  <script>
+    initPage('dashboard', 'Dashboard');
+
+    // Revenue chart
+    const chartEl = document.getElementById('revenue-chart');
+    const maxVal = Math.max(...MONTHLY_REVENUE.map(m => m.value));
+    MONTHLY_REVENUE.forEach(m => {
+      const bar = document.createElement('div');
+      bar.className = 'chart-bar';
+      bar.style.height = `${(m.value / maxVal) * 100}%`;
+      bar.setAttribute('data-label', m.month);
+      bar.title = `$${(m.value / 1000).toFixed(0)}K`;
+      chartEl.appendChild(bar);
+    });
+
+    // Activity feed
+    const feedEl = document.getElementById('activity-feed');
+    ACTIVITY_FEED.forEach(a => {
+      feedEl.innerHTML += `
+        <div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--border);">
+          <span style="font-size:18px">${a.icon}</span>
+          <div style="flex:1">
+            <div style="font-size:13px">${a.text}</div>
+            <div style="font-size:11px;color:var(--text-muted)">${a.time}</div>
+          </div>
+        </div>
+      `;
+    });
+
+    // Top deals
+    const dealsEl = document.getElementById('deals-table');
+    const topDeals = DEALS.filter(d => !d.stage.startsWith('closed')).sort((a, b) => b.value - a.value).slice(0, 5);
+    topDeals.forEach(d => {
+      const badgeClass = d.probability >= 70 ? 'badge-success' : d.probability >= 40 ? 'badge-warning' : 'badge-info';
+      dealsEl.innerHTML += `
+        <tr>
+          <td style="font-weight:600">${d.name}</td>
+          <td>${d.contact}</td>
+          <td>$${d.value.toLocaleString()}</td>
+          <td><span class="badge badge-info">${STAGE_LABELS[d.stage]}</span></td>
+          <td><span class="badge ${badgeClass}">${d.probability}%</span></td>
+        </tr>
+      `;
+    });
+  </script>
+</body>
+</html>

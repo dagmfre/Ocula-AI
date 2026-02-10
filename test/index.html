@@ -1,0 +1,558 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Ocula AI - Test Page</title>
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+    
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 20px;
+      background: #f5f5f5;
+    }
+    
+    h1 {
+      color: #333;
+      margin-bottom: 10px;
+    }
+    
+    .subtitle {
+      color: #666;
+      margin-bottom: 30px;
+    }
+    
+    .container {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+    }
+    
+    .panel {
+      background: white;
+      border-radius: 12px;
+      padding: 20px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    
+    .panel h2 {
+      margin-top: 0;
+      color: #444;
+      font-size: 1.1rem;
+      border-bottom: 1px solid #eee;
+      padding-bottom: 10px;
+    }
+    
+    .controls {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    
+    button {
+      padding: 12px 20px;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 500;
+      transition: all 0.2s;
+    }
+    
+    button:hover {
+      transform: translateY(-1px);
+    }
+    
+    button:active {
+      transform: translateY(0);
+    }
+    
+    .btn-primary {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+    }
+    
+    .btn-secondary {
+      background: #e0e0e0;
+      color: #333;
+    }
+    
+    .btn-danger {
+      background: #ff4444;
+      color: white;
+    }
+    
+    .btn-success {
+      background: #22c55e;
+      color: white;
+    }
+    
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      transform: none;
+    }
+    
+    .status {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px;
+      background: #f8f8f8;
+      border-radius: 8px;
+      margin-bottom: 10px;
+    }
+    
+    .status-indicator {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: #ccc;
+    }
+    
+    .status-indicator.connected {
+      background: #22c55e;
+    }
+    
+    .status-indicator.capturing {
+      background: #ff9500;
+    }
+    
+    .status-indicator.recording {
+      background: #ff4444;
+      animation: pulse 1s infinite;
+    }
+    
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+    
+    .input-group {
+      display: flex;
+      gap: 10px;
+      margin-top: 20px;
+    }
+    
+    input[type="text"] {
+      flex: 1;
+      padding: 12px 16px;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      font-size: 14px;
+    }
+    
+    input[type="text"]:focus {
+      outline: none;
+      border-color: #667eea;
+    }
+    
+    #log {
+      height: 300px;
+      overflow-y: auto;
+      background: #1a1a2e;
+      color: #0f0;
+      font-family: 'Monaco', 'Consolas', monospace;
+      font-size: 12px;
+      padding: 15px;
+      border-radius: 8px;
+    }
+    
+    .log-entry {
+      margin-bottom: 5px;
+      padding: 2px 0;
+    }
+    
+    .log-entry.error {
+      color: #ff6b6b;
+    }
+    
+    .log-entry.success {
+      color: #51cf66;
+    }
+    
+    .log-entry.info {
+      color: #74c0fc;
+    }
+    
+    .preview {
+      width: 100%;
+      height: 200px;
+      background: #f0f0f0;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #999;
+      overflow: hidden;
+    }
+    
+    .preview img {
+      max-width: 100%;
+      max-height: 100%;
+      object-fit: contain;
+    }
+    
+    .demo-area {
+      background: #fff;
+      padding: 30px;
+      border-radius: 12px;
+      margin-top: 20px;
+    }
+    
+    .demo-area h3 {
+      margin-top: 0;
+    }
+    
+    .demo-buttons {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    
+    .demo-button {
+      padding: 15px 25px;
+      background: #f0f0f0;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      cursor: pointer;
+    }
+    
+    .demo-button:hover {
+      background: #e8e8e8;
+    }
+  </style>
+</head>
+<body>
+  <h1>🔮 Ocula AI - Test Page</h1>
+  <p class="subtitle">Test the SDK functionality before building the widget UI</p>
+  
+  <div class="container">
+    <!-- Connection & Controls Panel -->
+    <div class="panel">
+      <h2>📡 Connection & Controls</h2>
+      
+      <div class="status">
+        <div class="status-indicator" id="status-ws"></div>
+        <span id="status-ws-text">WebSocket: Disconnected</span>
+      </div>
+      
+      <div class="status">
+        <div class="status-indicator" id="status-capture"></div>
+        <span id="status-capture-text">Screen: Not sharing</span>
+      </div>
+      
+      <div class="status">
+        <div class="status-indicator" id="status-audio"></div>
+        <span id="status-audio-text">Audio: Off</span>
+      </div>
+      
+      <div class="controls">
+        <button id="btn-connect" class="btn-primary">Connect to Server</button>
+        <button id="btn-capture" class="btn-secondary" disabled>Start Screen Share</button>
+        <button id="btn-audio" class="btn-secondary" disabled>Start Audio</button>
+        <button id="btn-disconnect" class="btn-danger" disabled>Disconnect</button>
+      </div>
+      
+      <div class="input-group">
+        <input type="text" id="query-input" placeholder="Ask Ocula AI something..." disabled>
+        <button id="btn-send" class="btn-primary" disabled>Send Query</button>
+        <button id="btn-send-text" class="btn-success" disabled>Send to Voice</button>
+      </div>
+    </div>
+    
+    <!-- Preview Panel -->
+    <div class="panel">
+      <h2>📸 Screen Preview</h2>
+      <div class="preview" id="preview">
+        <span>Start screen share to see preview</span>
+      </div>
+      <button id="btn-capture-frame" class="btn-secondary" style="margin-top: 10px; width: 100%;" disabled>
+        Capture Frame
+      </button>
+    </div>
+  </div>
+  
+  <!-- Log Panel -->
+  <div class="panel" style="margin-top: 20px;">
+    <h2>📋 Event Log</h2>
+    <div id="log"></div>
+  </div>
+  
+  <!-- Demo Area (for visual grounding tests) -->
+  <div class="demo-area">
+    <h3>🎯 Demo UI Elements (for testing visual grounding)</h3>
+    <p>Ask Ocula to find these buttons:</p>
+    <div class="demo-buttons">
+      <button class="demo-button" id="demo-settings">⚙️ Settings</button>
+      <button class="demo-button" id="demo-profile">👤 Profile</button>
+      <button class="demo-button" id="demo-billing">💳 Billing</button>
+      <button class="demo-button" id="demo-export">📥 Export Data</button>
+      <button class="demo-button" id="demo-help">❓ Help Center</button>
+    </div>
+  </div>
+
+  <!-- Load the built SDK -->
+  <script src="../apps/client-sdk/dist/ocula.js"></script>
+  
+  <script>
+    // Check if SDK loaded
+    if (typeof OculaSDK === 'undefined') {
+      console.error('OculaSDK not loaded! Make sure to run: pnpm build:client');
+      document.body.innerHTML = '<div style="padding:20px;color:red;">Error: OculaSDK not loaded. Run <code>pnpm build:client</code> first.</div>';
+    }
+    
+    // DOM Elements
+    const btnConnect = document.getElementById('btn-connect');
+    const btnCapture = document.getElementById('btn-capture');
+    const btnAudio = document.getElementById('btn-audio');
+    const btnDisconnect = document.getElementById('btn-disconnect');
+    const btnSend = document.getElementById('btn-send');
+    const btnCaptureFrame = document.getElementById('btn-capture-frame');
+    const queryInput = document.getElementById('query-input');
+    const preview = document.getElementById('preview');
+    const logEl = document.getElementById('log');
+    
+    const statusWs = document.getElementById('status-ws');
+    const statusWsText = document.getElementById('status-ws-text');
+    const statusCapture = document.getElementById('status-capture');
+    const statusCaptureText = document.getElementById('status-capture-text');
+    const statusAudio = document.getElementById('status-audio');
+    const statusAudioText = document.getElementById('status-audio-text');
+    
+    // SDK Instance
+    let ocula = null;
+    let previewInterval = null;
+    
+    // Logging
+    function log(message, type = '') {
+      const entry = document.createElement('div');
+      entry.className = 'log-entry ' + type;
+      entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+      logEl.appendChild(entry);
+      logEl.scrollTop = logEl.scrollHeight;
+      console.log(message);
+    }
+    
+    // Update UI state
+    function updateUI() {
+      const btnSendText = document.getElementById('btn-send-text');
+      
+      if (!ocula) {
+        btnConnect.disabled = false;
+        btnCapture.disabled = true;
+        btnAudio.disabled = true;
+        btnDisconnect.disabled = true;
+        btnSend.disabled = true;
+        btnSendText.disabled = true;
+        btnCaptureFrame.disabled = true;
+        queryInput.disabled = true;
+        return;
+      }
+      
+      const state = ocula.getState();
+      
+      // WebSocket status
+      if (state.isConnected) {
+        statusWs.classList.add('connected');
+        statusWsText.textContent = 'WebSocket: Connected';
+        btnConnect.disabled = true;
+        btnDisconnect.disabled = false;
+        btnCapture.disabled = false;
+        queryInput.disabled = false;
+        btnSend.disabled = false;
+        btnSendText.disabled = false;
+      } else {
+        statusWs.classList.remove('connected');
+        statusWsText.textContent = 'WebSocket: Disconnected';
+        btnConnect.disabled = false;
+        btnDisconnect.disabled = true;
+        btnSendText.disabled = true;
+      }
+      
+      // Capture status
+      if (state.isCapturing) {
+        statusCapture.classList.add('capturing');
+        statusCaptureText.textContent = 'Screen: Sharing';
+        btnCapture.textContent = 'Stop Screen Share';
+        btnCaptureFrame.disabled = false;
+      } else {
+        statusCapture.classList.remove('capturing');
+        statusCaptureText.textContent = 'Screen: Not sharing';
+        btnCapture.textContent = 'Start Screen Share';
+        btnCaptureFrame.disabled = true;
+      }
+      
+      // Audio status
+      if (state.isRecordingAudio) {
+        statusAudio.classList.add('recording');
+        statusAudioText.textContent = 'Audio: Recording';
+        btnAudio.textContent = 'Stop Audio';
+      } else {
+        statusAudio.classList.remove('recording');
+        statusAudioText.textContent = 'Audio: Off';
+        btnAudio.textContent = 'Start Audio';
+      }
+      
+      btnAudio.disabled = !state.isConnected;
+    }
+    
+    // Connect
+    btnConnect.addEventListener('click', async () => {
+      try {
+        log('Connecting to server...', 'info');
+        
+        ocula = new OculaSDK.Ocula({
+          serverUrl: 'ws://localhost:3001/ws',
+          autoConnect: false,
+          onReady: () => {
+            log('Connected to Ocula AI server!', 'success');
+            updateUI();
+          },
+          onError: (error) => {
+            log('Error: ' + error.message, 'error');
+          },
+          onResponse: (text) => {
+            log('AI: ' + text, 'success');
+          },
+        });
+        
+        await ocula.connect();
+        updateUI();
+        
+      } catch (error) {
+        log('Failed to connect: ' + error.message, 'error');
+        ocula = null;
+        updateUI();
+      }
+    });
+    
+    // Screen Capture
+    btnCapture.addEventListener('click', async () => {
+      if (!ocula) return;
+      
+      const state = ocula.getState();
+      
+      if (state.isCapturing) {
+        ocula.stopCapture();
+        clearInterval(previewInterval);
+        preview.innerHTML = '<span>Start screen share to see preview</span>';
+        log('Screen capture stopped', 'info');
+      } else {
+        try {
+          await ocula.startCapture();
+          ocula.startFrameStream(1000);
+          log('Screen capture started', 'success');
+          
+          // Update preview every second
+          previewInterval = setInterval(() => {
+            if (ocula.getState().isCapturing) {
+              try {
+                const frame = ocula.capture.captureFrame();
+                preview.innerHTML = `<img src="data:image/jpeg;base64,${frame}" alt="Screen preview">`;
+              } catch (e) {
+                // Ignore capture errors
+              }
+            }
+          }, 1000);
+          
+        } catch (error) {
+          log('Failed to start capture: ' + error.message, 'error');
+        }
+      }
+      updateUI();
+    });
+    
+    // Audio
+    btnAudio.addEventListener('click', async () => {
+      if (!ocula) return;
+      
+      const state = ocula.getState();
+      
+      if (state.isRecordingAudio) {
+        ocula.stopAudio();
+        log('Audio stopped', 'info');
+      } else {
+        try {
+          await ocula.startAudio();
+          log('Audio started', 'success');
+        } catch (error) {
+          log('Failed to start audio: ' + error.message, 'error');
+        }
+      }
+      updateUI();
+    });
+    
+    // Send Query (uses Vision API with screen)
+    btnSend.addEventListener('click', () => {
+      if (!ocula) return;
+      
+      const query = queryInput.value.trim();
+      if (!query) return;
+      
+      log('You (Query): ' + query, 'info');
+      ocula.sendQuery(query);
+      queryInput.value = '';
+    });
+
+    // Send Text directly to Live API (voice response)
+    const btnSendText = document.getElementById('btn-send-text');
+    btnSendText.addEventListener('click', () => {
+      if (!ocula) return;
+      
+      const text = queryInput.value.trim();
+      if (!text) return;
+      
+      log('You (Voice): ' + text, 'info');
+      ocula.sendMessage(text);
+      queryInput.value = '';
+    });
+    
+    queryInput.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') {
+        btnSend.click();
+      }
+    });
+    
+    // Capture single frame
+    btnCaptureFrame.addEventListener('click', () => {
+      if (!ocula) return;
+      
+      try {
+        ocula.captureAndSendFrame();
+        log('Frame captured and sent', 'info');
+      } catch (error) {
+        log('Failed to capture frame: ' + error.message, 'error');
+      }
+    });
+    
+    // Disconnect
+    btnDisconnect.addEventListener('click', () => {
+      if (ocula) {
+        clearInterval(previewInterval);
+        ocula.destroy();
+        ocula = null;
+        preview.innerHTML = '<span>Start screen share to see preview</span>';
+        log('Disconnected', 'info');
+        updateUI();
+      }
+    });
+    
+    // Demo button clicks
+    document.querySelectorAll('.demo-button').forEach(btn => {
+      btn.addEventListener('click', () => {
+        log(`Clicked: ${btn.textContent}`, 'info');
+      });
+    });
+    
+    // Initial UI state
+    updateUI();
+    log('Test page loaded. Click "Connect to Server" to begin.', 'info');
+  </script>
+</body>
+</html>
